@@ -10,9 +10,10 @@ test('Minecraft app approval and other refusals retain their distinct next steps
   expect(forbidden).not.toContain('mce-reviewappid')
 })
 
-test('Horizon failures identify the provider and unrelated errors keep their own handler', () => {
-  expect(serviceLoginErrorText(new Error('horizon_auth_missing'))).toContain('Horizon Launcher')
-  expect(serviceLoginErrorText('horizon_auth_failed')).toContain('Horizon')
-  expect(serviceLoginErrorText('horizon_auth_relogin')).toContain('Horizon')
+test('sign-in failures give a Turtle remedy without requiring another launcher', () => {
+  expect(serviceLoginErrorText(new Error('horizon_auth_missing'))).toContain('TurtleClient Launcher')
+  expect(serviceLoginErrorText(new Error('horizon_auth_missing'))).not.toContain('install Horizon')
+  expect(serviceLoginErrorText('horizon_auth_failed')).toContain('Microsoft')
+  expect(serviceLoginErrorText('horizon_auth_relogin')).toContain('Minecraft')
   expect(serviceLoginErrorText('http 500')).toBeUndefined()
 })

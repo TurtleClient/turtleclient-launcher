@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/horizon-rust/horizon",
+  "tag": "launcher@0.2.50",
+  "commit": "1fe21fb861002308bbdb055dddc1a3edbd21218e",
+  "license": "MIT",
+  "url": "https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.50/horizon-launcher-windows-x64.zip",
+  "sha256": "8c7ec08b720f21c249346df12333666b1710b20669d3785d7c8d1ae2e12af174",
+  "entry": "horizon-launcher.exe",
+  "exe_sha256": "aafc6a64f353a19d81631e9b5427444d05a3f7103e8a469f7ba36a6460967422"
+}

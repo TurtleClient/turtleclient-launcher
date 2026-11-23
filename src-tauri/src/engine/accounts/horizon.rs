@@ -1,4 +1,4 @@
-//! Temporary delegated sign-in using the installed Horizon launcher's public CLI.
+//! Sign-in using the bundled, pinned Horizon account provider's public CLI.
 //! Horizon owns OAuth grants; only its read-once Minecraft session crosses this bridge.
 use aes_gcm::aead::{rand_core::RngCore, OsRng};
 use base64::Engine as _;
@@ -33,28 +33,20 @@ impl Backend {
         let program = match std::env::var_os("TURTLECLIENT_HORIZON_LAUNCHER") {
             Some(path) => PathBuf::from(path),
             None => {
-                let file = if cfg!(windows) {
-                    "horizon-launcher.exe"
+                let exe = std::env::current_exe().map_err(|_| "horizon_auth_missing")?;
+                let root = exe.parent().ok_or("horizon_auth_missing")?;
+                let pin: Value =
+                    serde_json::from_str(include_str!("../../../account-provider.json"))
+                        .map_err(|_| "horizon_auth_missing")?;
+                let hash = pin["exe_sha256"].as_str().ok_or("horizon_auth_missing")?;
+                let program = bundled_program(root);
+                #[cfg(debug_assertions)]
+                let program = if program.is_file() {
+                    program
                 } else {
-                    "horizon-launcher"
+                    bundled_program(Path::new(env!("CARGO_MANIFEST_DIR")))
                 };
-                let mut paths = Vec::new();
-                if let Ok(exe) = std::env::current_exe() {
-                    if let Some(parent) = exe.parent() {
-                        paths.push(parent.join(file));
-                    }
-                }
-                if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-                    paths.push(
-                        PathBuf::from(local)
-                            .join("Programs/Horizon Launcher")
-                            .join(file),
-                    );
-                }
-                paths
-                    .into_iter()
-                    .find(|p| p.is_file())
-                    .ok_or("horizon_auth_missing")?
+                verified_program(program, hash)?
             }
         };
         if !program.is_file() {
@@ -101,6 +93,22 @@ impl Backend {
         }
         let path = answer["session_file"].as_str().ok_or(FAILED)?;
         consume_session(Path::new(path), &self.home.join("game/sessions"), &uuid)
+    }
+}
+
+fn bundled_program(root: &Path) -> PathBuf {
+    root.join("account-provider").join(if cfg!(windows) {
+        "turtle-account-provider.exe"
+    } else {
+        "turtle-account-provider"
+    })
+}
+
+fn verified_program(program: PathBuf, expected_hash: &str) -> Result<PathBuf, String> {
+    if crate::engine::sha256_file(&program).is_ok_and(|actual| actual == expected_hash) {
+        Ok(program)
+    } else {
+        Err("horizon_auth_missing".into())
     }
 }
 
@@ -370,6 +378,27 @@ fn session_answer(data: &Value, expected_uuid: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_provider_needs_no_separate_launcher_and_rejects_damage() {
+        let root = std::env::temp_dir().join(format!("turtle-bundled-auth-{}", std::process::id()));
+        let program = bundled_program(&root);
+        std::fs::create_dir_all(program.parent().unwrap()).unwrap();
+        std::fs::write(&program, b"isolated-provider-fixture").unwrap();
+        let hash = crate::engine::sha256_file(&program).unwrap();
+        assert_eq!(
+            verified_program(bundled_program(&root), &hash).unwrap(),
+            program
+        );
+        std::fs::write(&program, b"damaged").unwrap();
+        assert_eq!(
+            verified_program(program.clone(), &hash).unwrap_err(),
+            "horizon_auth_missing"
+        );
+        std::fs::remove_file(program).unwrap();
+        std::fs::remove_dir(root.join("account-provider")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
 
     #[tokio::test]
     async fn helper_sign_in_handoff_renewal_and_cancel_use_isolated_folders() {

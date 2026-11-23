@@ -31,8 +31,10 @@ jobs:
           key: windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
           restore-keys: windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-
       - run: bun install --frozen-lockfile
+      - name: Bundle the verified Microsoft sign-in provider
+        run: pwsh -NoProfile -File scripts/prepare-account-provider.ps1
       - name: Verify updater and connection behavior
-        run: bun scripts/test.mjs updater.test updatePolicy.test remoteUi.test friendsConnection.test turtle-release.test turtleGeometry.test turtleTag.test turtleWardrobeRules.test minecraftSkinCache.test textureSource.test lobbyLook.test deviceTier.test gpuLite.test slowLite.test
+        run: bun scripts/test.mjs updater.test updatePolicy.test remoteUi.test friendsConnection.test turtle-release.test turtleGeometry.test turtleTag.test turtleWardrobeRules.test minecraftSkinCache.test textureSource.test lobbyLook.test deviceTier.test gpuLite.test slowLite.test serviceLoginError.test
       - name: Set monotonically increasing release version
         id: version
         run: bun scripts/turtle-release.mjs prepare
@@ -57,6 +59,8 @@ jobs:
           args: --ci --bundles nsis --config src-tauri/tauri.release.conf.json -- --locked
       - name: Verify native client update installation
         run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib turtleclient::update::tests
+      - name: Verify bundled sign-in and account handoff
+        run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib engine::accounts::horizon::tests
       - name: Validate and publish the complete update atomically
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

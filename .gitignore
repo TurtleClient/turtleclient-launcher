@@ -14,3 +14,4 @@ public/**/*.md
 public/**/*.txt
 installer/target
 services/friends/target
+src-tauri/account-provider/

@@ -58,7 +58,7 @@ export function KindPanel({ kind: _kind, onBack, onDone, onSafety }: { kind: Kin
         {busy && code ? (
           <>
             {ms.provider === 'horizon' ? (
-              <p className="faint-note">{t('Temporary sign-in via Horizon. Confirm this code on Microsoft’s page.')}</p>
+              <p className="faint-note">{t('Confirm this code on Microsoft’s page. No additional launcher is needed.')}</p>
             ) : null}
             <button
               className="acc-code"

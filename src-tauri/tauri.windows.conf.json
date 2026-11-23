@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "account-provider/turtle-account-provider.exe": "account-provider/turtle-account-provider.exe",
+      "../licenses/horizon-account-provider-MIT.txt": "licenses/horizon-account-provider-MIT.txt"
+    }
+  }
+}
