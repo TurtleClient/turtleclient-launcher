@@ -1,0 +1,64 @@
+name: Sign native Turtle client manifest
+on:
+  push:
+    branches: [codex/latest-client-and-website-download]
+    paths: [native-client-release.json, .github/workflows/sign-native-client.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sign:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install the existing Tauri signer
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Verify the artifact and sign only its release manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!$env:TAURI_SIGNING_PRIVATE_KEY) { throw 'The repository signing key is not configured.' }
+          $release = Get-Content -LiteralPath native-client-release.json -Raw | ConvertFrom-Json
+          if ($release.schema -ne 1 -or $release.kind -ne 'turtleclient-native' -or $release.minecraft -ne '26.3' -or $release.platform -ne 'windows-x86_64') { throw 'Unexpected release format.' }
+          if ($release.sha256 -notmatch '^[a-f0-9]{64}$' -or $release.exe_sha256 -notmatch '^[a-f0-9]{64}$' -or $release.size -gt 268435456) { throw 'Unexpected artifact digest or size.' }
+          if ($release.url -ne ('https://45.133.9.162/turtleclient/client/releases/' + $release.sha256 + '/client.zip')) { throw 'Unexpected artifact origin.' }
+          $archive = Join-Path $env:RUNNER_TEMP 'native-client.zip'
+          Invoke-WebRequest -Uri $release.url -OutFile $archive -MaximumRedirection 0
+          if ((Get-Item -LiteralPath $archive).Length -ne $release.size -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $release.sha256) { throw 'The published artifact differs from the manifest.' }
+          $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            $entry = $zip.GetEntry('TurtleClient.exe')
+            if (!$entry) { throw 'The native executable is missing.' }
+            $stream = $entry.Open()
+            try {
+              $sha = [Security.Cryptography.SHA256]::Create()
+              $digest = [Convert]::ToHexString($sha.ComputeHash($stream)).ToLowerInvariant()
+              if ($digest -ne $release.exe_sha256) { throw 'The native executable digest differs.' }
+            } finally { $stream.Dispose() }
+          } finally { $zip.Dispose() }
+          $key = Join-Path $env:RUNNER_TEMP 'native-client-signing.key'
+          try {
+            [IO.File]::WriteAllText($key, $env:TAURI_SIGNING_PRIVATE_KEY)
+            & bun run tauri signer sign --private-key-path $key --password '' native-client-release.json
+            if ($LASTEXITCODE -ne 0) { throw 'Manifest signing failed.' }
+          } finally {
+            Remove-Item -LiteralPath $key -Force -ErrorAction SilentlyContinue
+            Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
+          }
+          $payload = [Convert]::ToBase64String([IO.File]::ReadAllBytes('native-client-release.json'))
+          $signature = (Get-Content -LiteralPath native-client-release.json.sig -Raw).Trim()
+          New-Item -ItemType Directory -Path signed-native -Force | Out-Null
+          @{payload=$payload;signature=$signature} | ConvertTo-Json | Set-Content -LiteralPath signed-native/latest.json -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-native-manifest
+          path: signed-native/latest.json
+          retention-days: 7

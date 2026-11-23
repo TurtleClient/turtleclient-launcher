@@ -3,15 +3,16 @@ import argparse,base64,datetime,hashlib,json,os,shutil,subprocess,zipfile
 from pathlib import Path
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--release-dir',type=Path,required=True);args=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--release-dir',type=Path,required=True);p.add_argument('--stage-only',action='store_true');args=p.parse_args()
  source=args.release_dir.resolve(strict=True)
- envelope=json.loads((source/'latest.json').read_text())
- release=json.loads(base64.b64decode(envelope['payload'],validate=True))
+ envelope=None if args.stage_only else json.loads((source/'latest.json').read_text())
+ release=json.loads((source/'manifest-payload.json').read_bytes()) if args.stage_only else json.loads(base64.b64decode(envelope['payload'],validate=True))
  archive=source/'client.zip';sha=hashlib.sha256(archive.read_bytes()).hexdigest()
  assert release['schema']==1 and release['kind']=='turtleclient-native'
  assert release['sha256']==sha and release['size']==archive.stat().st_size
  assert release['url']=='https://45.133.9.162/turtleclient/client/releases/'+sha+'/client.zip'
- assert envelope['signature'] and release['platform']=='windows-x86_64'
+ assert release['platform']=='windows-x86_64'
+ if not args.stage_only:assert envelope['signature']
  with zipfile.ZipFile(archive) as zip:
   names=zip.namelist();assert len(names)<=256
   assert {'TurtleClient.exe','LICENSE','THIRD_PARTY_NOTICES.md','turtleclient-base.json'}<=set(names)
@@ -25,7 +26,7 @@ def main():
  if artifact.exists():assert hashlib.sha256(artifact.read_bytes()).hexdigest()==sha
  else:shutil.copyfile(archive,artifact);artifact.chmod(0o644)
  latest=root/'latest.json'
- if latest.exists():
+ if latest.exists() and not args.stage_only:
   previous=json.loads(base64.b64decode(json.loads(latest.read_text())['payload']))
   assert release['sequence']>previous['sequence'],'Release sequence must increase'
  backup=Path('/var/backups/turtleclient')/('client-updates-'+datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ'));backup.mkdir(parents=True)
@@ -59,6 +60,9 @@ location ^~ /turtleclient/client/releases/ {
   if old_snippet is None:snippet.unlink(missing_ok=True)
   else:snippet.write_bytes(old_snippet)
   raise
+ if args.stage_only:
+  print('Staged verified native artifact for signing',release['version'],sha,'backup',backup)
+  return
  temp=root/'latest.json.pending';shutil.copyfile(source/'latest.json',temp);temp.chmod(0o644);os.replace(temp,latest)
  print('Published native client',release['version'],sha,'backup',backup)
 if __name__=='__main__':main()

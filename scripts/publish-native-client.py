@@ -23,6 +23,7 @@ def main():
  parser.add_argument('--binary',type=Path)
  parser.add_argument('--key-file',type=Path,default=Path(os.environ.get('LOCALAPPDATA','~'))/'TurtleClient/ReleaseKeys/launcher-updater/updater.key')
  parser.add_argument('--publish',action='store_true')
+ parser.add_argument('--prepare-only',action='store_true',help='Prepare the verified payload for repository-side signing without reading a local private key')
  args=parser.parse_args();repo=args.client_repo.resolve(strict=True)
  binary=(args.binary or repo/'target/fast/turtle-client.exe').resolve(strict=True)
  with binary.open('rb') as file:
@@ -37,6 +38,9 @@ def main():
  sha=digest(archive)
  release={'schema':1,'kind':'turtleclient-native','sequence':time.time_ns()//1000000,'version':meta['version'],'minecraft':meta['minecraft'],'platform':'windows-x86_64','url':f'{BASE}/client/releases/{sha}/client.zip','size':archive.stat().st_size,'sha256':sha,'exe_sha256':digest(binary)}
  payload=out/'manifest-payload.json';payload.write_bytes(json.dumps(release,separators=(',',':')).encode())
+ if args.prepare_only:
+  print(json.dumps({'version':release['version'],'sha256':sha,'size':release['size'],'output':str(out)}),flush=True)
+  return
  subprocess.run(['node',str(ROOT/'node_modules/@tauri-apps/cli/tauri.js'),'signer','sign','--private-key-path',str(args.key_file.resolve(strict=True)),'--password','',str(payload)],cwd=ROOT,check=True,capture_output=True)
  signature=Path(str(payload)+'.sig').read_text(encoding='utf-8').strip()
  envelope={'payload':base64.b64encode(payload.read_bytes()).decode(),'signature':signature}

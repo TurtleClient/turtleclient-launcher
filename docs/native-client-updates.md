@@ -6,7 +6,28 @@ and installed automatically. The existing Play button displays checking, downloa
 progress and installation states. Settings → Game also offers a manual check.
 
 This channel updates the **game client**, independently of the launcher's own updater.
-Its first published release is `0.10.1-dev` for Windows x64 / Minecraft 26.3.
+The channel serves Windows x64 / Minecraft 26.3 independently of the launcher version.
+
+## Preparing and publishing a native release
+
+Build and validate the complete game update first. Use
+`python scripts/publish-native-client.py --prepare-only --client-repo PATH` to package
+only the native executable and license notices. This writes `client.zip` and
+`manifest-payload.json` without requiring a local signing key.
+
+Stage the verified archive with `services/client-updates/deploy.py --stage-only`.
+Staging exposes its immutable, digest-addressed download but never changes the live
+`latest.json`. Copy the payload to `native-client-release.json` and push the dedicated
+`codex/latest-client-and-website-download` branch. `sign-native-client.yml` verifies
+the archive and executable hashes, then signs the manifest inside GitHub Actions
+using the existing repository signing secret. It does not publish a release.
+
+Download `signed-native-manifest`, verify its signature against the public key
+compiled into the released launcher, and publish it with the same deployment tool
+without `--stage-only`. The final manifest switch is atomic. Never replace it with
+an unsigned payload, and keep its sequence monotonically increasing. Before every
+Start the launcher checks this channel; an intact installed client remains usable
+when the network is unavailable.
 
 ## Installation and integrity
 
