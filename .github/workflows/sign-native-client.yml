@@ -47,6 +47,7 @@ jobs:
           $key = Join-Path $env:RUNNER_TEMP 'native-client-signing.key'
           try {
             [IO.File]::WriteAllText($key, $env:TAURI_SIGNING_PRIVATE_KEY)
+            Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY
             & bun run tauri signer sign --private-key-path $key --password '' native-client-release.json
             if ($LASTEXITCODE -ne 0) { throw 'Manifest signing failed.' }
           } finally {
