@@ -17,6 +17,8 @@ Before a binary release: finish reviewing/replacing remaining upstream design ar
 screens, configure TurtleClient's own Microsoft application and signed update pipeline, and implement
 native TurtleClient launch support. The current baseline is a Java Minecraft launcher fork.
 
-Development authentication now delegates to the installed Horizon Launcher's public account/session
-CLI. Horizon is an external MIT-licensed program, not bundled code. TurtleClient's own Microsoft
-application ID remains available through `TURTLECLIENT_AUTH_PROVIDER=microsoft`.
+Windows authentication uses the bundled, unmodified Horizon account provider from the MIT-licensed
+`launcher@0.2.50` release (commit `1fe21fb861002308bbdb055dddc1a3edbd21218e`). Its archive and
+executable digests are pinned; no Horizon installation is required. The original MIT notice is
+included. The provider's OAuth application ID is not copied. TurtleClient's direct registration
+remains selectable through `TURTLECLIENT_AUTH_PROVIDER=microsoft`.

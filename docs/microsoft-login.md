@@ -1,30 +1,25 @@
 # Microsoft and Minecraft sign-in
 
-## Temporary development backend: Horizon
+## Included Windows sign-in component
 
-The current default delegates sign-in to the **installed Horizon Launcher**:
+The Windows installer includes the account provider. Users install only TurtleClient.
+The build downloads the pinned official archive and checks both archive and executable SHA-256
+against `src-tauri/account-provider.json`. Tauri bundles it under `account-provider/`, with its MIT
+notice. Runtime discovery uses that installation directory and verifies the executable digest;
+it does not search for an installed Horizon Launcher. Developer builds run
+`pwsh -NoProfile -File scripts/prepare-account-provider.ps1` before Tauri.
 
-1. TurtleClient starts `horizon-launcher --json account sign-in` and shows its public Microsoft code.
-2. The UI identifies the provider as Horizon; the Microsoft consent page belongs to Horizon.
-3. After sign-in, `account session UUID` returns a fresh, read-once session file.
-4. TurtleClient consumes and deletes that file and stores the Minecraft token in its existing encrypted vault.
-5. Renewal calls Horizon again. Microsoft refresh tokens remain owned by Horizon and never enter the webview.
+The provider is the unmodified Horizon launcher from the recorded MIT-licensed release, invoked
+with `--json account sign-in`, `list` and `session UUID`. It runs hidden with isolated Turtle-owned
+homes and self-updates disabled. Microsoft may display Horizon on its consent screen. Its public
+application ID is not extracted or copied. Minecraft ownership remains required.
 
-The bridge uses a launcher store under TurtleClient's data folder, `horizon-auth/launcher`, and a
-session handoff folder at `horizon-auth/game/sessions`. It does not read Horizon's secrets files.
-Cancelling the sign-in stops its child process; exiting the launcher stops pending sign-ins too.
-The child runs without a console window or self-updates.
+Tokens stay in the provider's private credential store or Turtle's encrypted vault. The UI receives
+only the confirmation code and public account facts. Read-once session files are consumed after
+handoff. Existing sessions keep the same private home and can renew after updating the launcher.
 
-On Windows the helper is discovered beside the TurtleClient executable or at
-`%LOCALAPPDATA%/Programs/Horizon Launcher/horizon-launcher.exe`. Override this with the runtime
-variable `TURTLECLIENT_HORIZON_LAUNCHER` if needed. Other platforms can use the explicit path.
-
-Set `TURTLECLIENT_AUTH_PROVIDER=microsoft` to select the direct flow described below;
-unset it or set it to `horizon` to use this temporary backend. Export variables into the launcher
-process; `.env.example` is documentation, not an automatically loaded Cargo environment file.
-
-This uses Horizon's implemented authentication and session interface. It does not copy its OAuth
-client ID, grant TurtleClient's app Minecraft API approval, or bypass Minecraft account ownership.
+`TURTLECLIENT_HORIZON_LAUNCHER` remains an explicit development/test override, not an installation
+requirement. Missing or damaged bundled files prompt a Turtle update/reinstall.
 
 ## Direct TurtleClient Microsoft application
 

@@ -1,5 +1,12 @@
 # Third-party components
 
+Windows account provider: the unmodified Horizon launcher `launcher@0.2.50`, commit
+`1fe21fb861002308bbdb055dddc1a3edbd21218e`, is bundled as an account CLI component.
+That release is MIT-licensed; see `licenses/horizon-account-provider-MIT.txt` and the pinned
+archive/executable digests in `src-tauri/account-provider.json`. Source and original release:
+https://github.com/horizon-rust/horizon/tree/launcher%400.2.50 .
+No OAuth application ID is copied into TurtleClient.
+
 `src/lib/turtleGeometry.ts` implements Turtle format 2 and adapts the box-face/UV
 conventions from Horizon's `crates/horizon-cosmetics/src/item.rs` (MIT), including
 the Turtle per-face UV extension. Copyright © 2026 Ludovic Marie and the Horizon
