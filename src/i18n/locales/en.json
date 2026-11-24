@@ -6548,5 +6548,12 @@
   "Turtle: client version {version}": "Client version {version}",
   "Turtle: checked whenever the launcher starts.": "Checked whenever the launcher starts.",
   "Turtle: check for client updates": "Check for client updates",
-  "Turtle: the client updates automatically. Select your prepared Minecraft resources and game folder.": "The client updates automatically. Select your prepared Minecraft resources and game folder."
+  "Turtle: the client updates automatically. Select your prepared Minecraft resources and game folder.": "The client updates automatically. Select your prepared Minecraft resources and game folder.",
+  "Turtle: preparing Minecraft resources… The first start can take a few minutes.": "preparing Minecraft resources… The first start can take a few minutes.",
+  "Turtle: Minecraft source (Modrinth or other launcher)": "Minecraft source (Modrinth or other launcher)",
+  "Turtle: automatic": "automatic",
+  "Turtle: Modrinth and other launchers are detected automatically. Resources are prepared on the first start; no separate Horizon installation is needed.": "Modrinth and other launchers are detected automatically. Resources are prepared on the first start; no separate Horizon installation is needed.",
+  "Turtle: resource preparation failed. Check your connection or choose your Modrinth folder in Game settings.": "resource preparation failed. Check your connection or choose your Modrinth folder in Game settings.",
+  "Turtle: Minecraft resources are already being prepared.": "Minecraft resources are already being prepared.",
+  "Turtle: choose the Modrinth app folder or a Minecraft installation folder.": "choose the Modrinth app folder or a Minecraft installation folder."
 }

@@ -122,3 +122,12 @@ Changes: the volume is leveled (EBU R128, −18 LUFS), and the files are re-enco
 - Minecraft, Mojang/Microsoft resources, and CurseForge/Modrinth content
   are not distributed by the launcher. It only downloads them from the official sources
   to the user's machine.
+
+## Turtle resource preparation (MIT)
+
+The pinned native `horizon-prepare` and original Java exporter sources come from
+TurtleClient/TurtleClient-Mod at da385406ea77bfa84606e1ffe3034b363f69aaa3 (MIT).
+See `licenses/horizon-resources-MIT.txt` and `src-tauri/resources-preparer.json`.
+The package contains no Mojang game files or prepared resources. Preparation uses
+the bundled MIT account provider for installed-launcher discovery and managed Java;
+it does not require a separate Horizon installation.

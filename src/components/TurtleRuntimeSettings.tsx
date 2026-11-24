@@ -12,7 +12,7 @@ export function TurtleRuntimeSettings() {
   const [config, setConfig] = useState<TurtleSettings | null>(null)
   const [busy, setBusy] = useState(false)
   const runtime=useTurtleRuntime(true)
-  useEffect(() => { void turtle<TurtleStatus>('turtle_status').then(s => setConfig(current=>({...s.settings,resources:current?.resources || s.settings.resources,game_dir:current?.game_dir || s.settings.game_dir}))).catch(() => {}) }, [runtime.clientUpdate?.phase])
+  useEffect(() => { void turtle<TurtleStatus>('turtle_status').then(s => setConfig(current=>({...s.settings,resources:current?.resources || s.settings.resources,game_dir:current?.game_dir || s.settings.game_dir,minecraft_source:current?.minecraft_source || s.settings.minecraft_source}))).catch(() => {}) }, [runtime.clientUpdate?.phase])
   async function checkUpdates() {
     setBusy(true)
     try {await turtle('turtle_client_update')}
@@ -37,10 +37,10 @@ export function TurtleRuntimeSettings() {
       <button className="btn sm secondary" disabled={busy || runtime.busy} onClick={()=>void checkUpdates()}>{t('Turtle: check for client updates')}</button>
     </Row>
     {config && <Row title={t('Turtle: executable')} hint={config.executable} />}
-    {config && (['resources', 'game_dir'] as const).map(field => <Row key={field} title={t(field === 'resources' ? 'Turtle: resources' : 'Turtle: game folder')} hint={config[field]}>
+    {config && (['minecraft_source', 'resources', 'game_dir'] as const).map(field => <Row key={field} title={t(field === 'minecraft_source' ? 'Turtle: Minecraft source (Modrinth or other launcher)' : field === 'resources' ? 'Turtle: resources' : 'Turtle: game folder')} hint={config[field] || t('Turtle: automatic')}>
       <button className="btn sm secondary" onClick={() => void browse(field)}>{t('Turtle: browse')}</button>
     </Row>)}
-    <Row title={t('Turtle: native client')} hint={t('Turtle: the client updates automatically. Select your prepared Minecraft resources and game folder.')}>
+    <Row title={t('Turtle: native client')} hint={t('Turtle: Modrinth and other launchers are detected automatically. Resources are prepared on the first start; no separate Horizon installation is needed.')}>
       <button className="btn sm primary" disabled={!config || busy || runtime.busy} onClick={() => void save()}>{t('Turtle: save configuration')}</button>
     </Row>
   </Group>

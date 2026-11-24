@@ -58,10 +58,13 @@ impl Backend {
         })
     }
     fn command(&self, args: &[&str]) -> Command {
+        let mut cmd = self.base_command();
+        cmd.args(["--json", "account"]).args(args);
+        cmd
+    }
+    fn base_command(&self) -> Command {
         let mut cmd = Command::new(&self.program);
-        cmd.args(["--json", "account"])
-            .args(args)
-            .stdin(Stdio::null())
+        cmd.stdin(Stdio::null())
             .env("HORIZON_LAUNCHER_HOME", self.home.join("launcher"))
             .env("HORIZON_HOME", self.home.join("game"))
             .env("XDG_DATA_HOME", self.home.join("data"))
@@ -94,6 +97,19 @@ impl Backend {
         let path = answer["session_file"].as_str().ok_or(FAILED)?;
         consume_session(Path::new(path), &self.home.join("game/sessions"), &uuid)
     }
+}
+
+/// Uses the already bundled MIT provider for launcher-folder discovery and managed Java.
+/// Only Turtle's pinned native preparer is installed in this private version folder.
+pub fn turtle_prepare_command(tag: &str, source: Option<&Path>) -> Result<(PathBuf, Command), String> {
+    let backend = Backend::find()?;
+    let root = backend.home.join("launcher/versions").join(tag);
+    let mut cmd = backend.base_command();
+    cmd.args(["--json", "prepare", "--version", tag]);
+    if let Some(source) = source {
+        cmd.arg("--minecraft").arg(source);
+    }
+    Ok((root, cmd))
 }
 
 fn bundled_program(root: &Path) -> PathBuf {

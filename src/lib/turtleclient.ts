@@ -1,7 +1,7 @@
 import { tauri } from '../ipc/tauri'
-export interface TurtleSettings { executable: string; resources: string; game_dir: string }
+export interface TurtleSettings { executable: string; resources: string; game_dir: string; minecraft_source?:string }
 export interface TurtleUpdateStatus {phase:string;version:string;downloaded:number;total:number;error:string}
-export interface TurtleStatus { settings: TurtleSettings; running: boolean;update?:TurtleUpdateStatus }
+export interface TurtleStatus { settings: TurtleSettings; running: boolean;update?:TurtleUpdateStatus;preparation?:{phase:string} }
 export interface Friend { uuid: string; name: string; online: boolean }
 export interface FriendList { friends: Friend[]; incoming: Friend[]; outgoing: Friend[] }
 export interface Cosmetic { id: string; name: string; slot: string; owner: string; hash: string; type?:string; access?:'free'|'paid'; price_minor?:number; currency?:string }
@@ -18,6 +18,9 @@ export const emptyFriends = (): FriendList => ({ friends: [], incoming: [], outg
 export function serviceError(error: unknown): string {
   const code = String(error)
   if (code.includes('turtle_update_')) return 'Turtle: client update failed. Check your connection and try again.'
+  if (code.includes('resources_prepare_failed')) return 'Turtle: resource preparation failed. Check your connection or choose your Modrinth folder in Game settings.'
+  if (code.includes('resources_busy')) return 'Turtle: Minecraft resources are already being prepared.'
+  if (code.includes('resources_source_invalid')) return 'Turtle: choose the Modrinth app folder or a Minecraft installation folder.'
   if (code.includes('404')) return 'Turtle: player not found. They must connect to Friends first.'
   if (code.includes('401') || code.includes('connect_required')) return 'Turtle: connect to Friends again.'
   if (code.includes('429')) return 'Turtle: too many requests. Please wait.'

@@ -1,0 +1,11 @@
+{
+  "minecraft": "26.3",
+  "schema": 7,
+  "output_version": 3,
+  "source_commit": "da385406ea77bfa84606e1ffe3034b363f69aaa3",
+  "license": "MIT",
+  "sha256": "3617fd163debf21524868335ff01fc6a592daec5b6af0b5eb74d73be97ac6168",
+  "exe_sha256": "2ca7a79418f1cc2e387cd5690823b7234f19dbc1b62187f8235390c4ec9d8632",
+  "size": 2012208,
+  "url": "https://github.com/TurtleClient/turtleclient-launcher/releases/download/v2.3.12/turtle-resource-preparer-26.3-3617fd163deb.zip"
+}

@@ -17,3 +17,5 @@ services/friends/target
 src-tauri/account-provider/
 /installer/bootstrap/target/
 /installer/dist/
+
+/src-tauri/resources-preparer.zip

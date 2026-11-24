@@ -5,4 +5,5 @@ export const BRAND = {
   upstream: 'https://github.com/millida/launcher',
   services: false,
   updates: true,
+  onboarding: false,
 } as const

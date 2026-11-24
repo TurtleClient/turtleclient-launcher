@@ -6,6 +6,8 @@ const prefs = new Map<string, string>()
 const screens: string[] = []
 let hydrated = 0
 let diskDone = ''
+const brand = { onboarding: true }
+mock.module('../lib/branding', () => ({ BRAND: brand }))
 
 mock.module('../lib/prefs', () => ({
   readPref: (k: string, fallback: string) => (prefs.has(k) ? prefs.get(k)! : fallback),
@@ -24,12 +26,24 @@ const { finishOnboarding, markMillidaEver, maybeStartOnboarding, millidaEver, on
 const { TOUR_STEPS, startTour, stopTour, tourDone, tourNext, tourPrev, useTour } = await import('./tour')
 
 beforeEach(() => {
+  brand.onboarding = true
   prefs.clear()
   screens.length = 0
   diskDone = ''
   hydrated = 0
   useOnboarding.setState({ open: false, step: 0 })
   useTour.setState({ active: false, index: 0 })
+})
+
+test('Turtle skips the modpack and theme wizard on a fresh install and clears stale dialogs', async () => {
+  brand.onboarding = false
+  await maybeStartOnboarding()
+  expect(useOnboarding.getState().open).toBe(false)
+  expect(useTour.getState().active).toBe(false)
+  useOnboarding.setState({ open: true, step: 4 })
+  await maybeStartOnboarding()
+  expect(useOnboarding.getState()).toMatchObject({ open: false, step: 0 })
+  expect(useTour.getState().active).toBe(false)
 })
 
 test('first run opens the wizard, a finished one never does again', async () => {

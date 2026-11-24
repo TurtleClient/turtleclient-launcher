@@ -12,11 +12,14 @@ use std::{
 
 const BASE: &str = "https://45.133.9.162/turtleclient";
 pub(crate) mod update;
+mod resources;
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Settings {
     executable: String,
     resources: String,
     game_dir: String,
+    #[serde(default)]
+    minecraft_source: String,
 }
 fn settings_file() -> PathBuf {
     engine::data_dir().join("turtleclient.json")
@@ -52,25 +55,11 @@ fn defaults() -> Settings {
             })
         })
         .unwrap_or_default();
-    let resources = std::env::var("TURTLE_RESOURCES")
-        .ok()
-        .or_else(|| {
-            let versions = dirs::config_dir()?.join("horizon-launcher/versions");
-            let mut entries = std::fs::read_dir(versions)
-                .ok()?
-                .filter_map(Result::ok)
-                .map(|e| e.path())
-                .collect::<Vec<_>>();
-            entries.sort();
-            entries.reverse();
-            entries
-                .into_iter()
-                .find_map(|p| existing(p.join(".local/horizon-client/26.3")))
-        })
-        .unwrap_or_default();
+    let resources = std::env::var("TURTLE_RESOURCES").ok().or_else(resources::discover).unwrap_or_default();
     Settings {
         executable,
         resources,
+        minecraft_source: resources::default_source(),
         game_dir: engine::data_dir()
             .join("turtleclient/game")
             .to_string_lossy()
@@ -78,16 +67,19 @@ fn defaults() -> Settings {
     }
 }
 fn settings() -> Settings {
-    std::fs::read(settings_file())
+    let mut config: Settings = std::fs::read(settings_file())
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_else(defaults)
+        .unwrap_or_else(defaults);
+    if config.resources.is_empty() {config.resources=resources::discover().unwrap_or_default();}
+    if config.minecraft_source.is_empty() {config.minecraft_source=resources::default_source();}
+    config
 }
 #[tauri::command]
 pub async fn turtle_pick_path(field: String) -> Result<Option<String>, String> {
     let path = match field.as_str() {
         "executable" => engine::pick_file(engine::dialog()).await,
-        "resources" | "game_dir" => engine::pick_folder(engine::dialog()).await,
+        "resources" | "game_dir" | "minecraft_source" => engine::pick_folder(engine::dialog()).await,
         _ => return Err("turtle_action_invalid".into()),
     };
     Ok(path.map(|p| p.to_string_lossy().into_owned()))
@@ -108,20 +100,20 @@ fn running() -> bool {
 }
 #[tauri::command]
 pub async fn turtle_status() -> Result<Value, String> {
-    crate::commands::blocking(|| json!({"settings":settings(),"running":running(),"update":update::status()})).await
+    crate::commands::blocking(|| json!({"settings":settings(),"running":running(),"update":update::status(),"preparation":resources::status()})).await
 }
 #[tauri::command]
 pub async fn turtle_configure(settings: Settings) -> Result<(), String> {
     crate::commands::blocking(move || {
         validate(&settings)?;
-        std::fs::create_dir_all(engine::data_dir()).map_err(|_| "turtle_settings_failed")?;
-        std::fs::write(
-            settings_file(),
-            serde_json::to_vec(&settings).map_err(|_| "turtle_settings_failed")?,
-        )
-        .map_err(|_| "turtle_settings_failed".to_string())
+        save_settings(&settings)
     })
     .await?
+}
+fn save_settings(settings: &Settings) -> Result<(),String> {
+    std::fs::create_dir_all(engine::data_dir()).map_err(|_|"turtle_settings_failed")?;
+    std::fs::write(settings_file(),serde_json::to_vec(settings).map_err(|_|"turtle_settings_failed")?)
+        .map_err(|_|"turtle_settings_failed".into())
 }
 fn validate(settings: &Settings) -> Result<(), String> {
     let exe = Path::new(&settings.executable);
@@ -134,8 +126,11 @@ fn validate(settings: &Settings) -> Result<(), String> {
     ) {
         return Err("turtle_executable_invalid".into());
     }
-    if !Path::new(&settings.resources).is_absolute() || !Path::new(&settings.resources).is_dir() {
+    if !settings.resources.is_empty() && !resources::ready(Path::new(&settings.resources)) {
         return Err("turtle_resources_missing".into());
+    }
+    if !settings.minecraft_source.is_empty() && (!Path::new(&settings.minecraft_source).is_absolute() || !Path::new(&settings.minecraft_source).is_dir()) {
+        return Err("turtle_resources_source_invalid".into());
     }
     if !Path::new(&settings.game_dir).is_absolute() {
         return Err("turtle_game_dir_invalid".into());
@@ -175,10 +170,10 @@ async fn profile(account: &str) -> Result<(Value, String), String> {
 #[tauri::command]
 pub async fn turtle_launch(account_id: Option<String>, nick: String) -> Result<(), String> {
     update::before_launch().await?;
-    let config = settings();
-    validate(&config)?;
     let id = account_id.ok_or("turtle_login_required")?;
     let (p, t) = profile(&id).await?;
+    let config = resources::ensure(settings()).await?;
+    validate(&config)?;
     let identity = Some(json!({"name":p["name"],"uuid":p["id"],"access_token":t,"user_type":"msa"}));
     if nick.is_empty()
         || nick.len() > 16
@@ -529,6 +524,11 @@ mod tests {
         let suffix: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let home = std::env::temp_dir().join(format!("turtle-native-{suffix}"));
         std::fs::create_dir_all(home.join("resources")).unwrap();
+        for file in ["facts.json", "items.json", "cached-collision.nbt", "render-definitions.json"] {
+            std::fs::write(home.join("resources").join(file), b"{}").unwrap();
+        }
+        std::fs::write(home.join("resources/horizon-resources.json"), br#"{"minecraft":"26.3","schema":7}"#).unwrap();
+        std::fs::write(home.join("resources/horizon-prepare.json"), br#"{"output_version":3}"#).unwrap();
         let exe = home.join(if cfg!(windows) {
             "TurtleClient.exe"
         } else {
@@ -543,6 +543,7 @@ mod tests {
             .unwrap()
             .success());
         let config = Settings {
+            minecraft_source: String::new(),
             executable: exe.to_string_lossy().into_owned(),
             resources: home.join("resources").to_string_lossy().into_owned(),
             game_dir: home.join("game").to_string_lossy().into_owned(),
