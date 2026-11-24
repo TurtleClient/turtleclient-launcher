@@ -21,15 +21,18 @@ jobs:
         with:
           bun-version: 1.4.4
       - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
+        run: rustup toolchain install stable --profile minimal --component clippy --component rustfmt
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
-          restore-keys: windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            installer/bootstrap/target
+          key: windows-release-${{ hashFiles('src-tauri/Cargo.lock', 'installer/bootstrap/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            windows-release-${{ hashFiles('src-tauri/Cargo.lock', 'installer/bootstrap/Cargo.lock') }}-
+            windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-
       - run: bun install --frozen-lockfile
       - name: Bundle the verified Microsoft sign-in provider
         run: pwsh -NoProfile -File scripts/prepare-account-provider.ps1
@@ -38,6 +41,29 @@ jobs:
       - name: Set monotonically increasing release version
         id: version
         run: bun scripts/turtle-release.mjs prepare
+      - name: Verify and build the native Turtle bootstrap
+        run: |
+          cargo fmt --manifest-path installer/bootstrap/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path installer/bootstrap/Cargo.toml --locked --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path installer/bootstrap/Cargo.toml --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --manifest-path installer/bootstrap/Cargo.toml --locked --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path installer/dist -Force | Out-Null
+          Copy-Item installer/bootstrap/target/release/turtleclient-setup.exe installer/dist/TurtleClient-Setup.exe
+      - name: Sign and verify the bootstrap
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: |
+          bun run tauri signer sign installer/dist/TurtleClient-Setup.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $verification = Start-Process -FilePath installer/dist/TurtleClient-Setup.exe -ArgumentList '--verify-file installer/dist/TurtleClient-Setup.exe installer/dist/TurtleClient-Setup.exe.sig' -Wait -PassThru -WindowStyle Hidden
+          if ($verification.ExitCode -ne 0) { throw 'The bootstrap signature did not verify with the pinned release key.' }
+          $hash = (Get-FileHash installer/dist/TurtleClient-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  TurtleClient-Setup.exe" | Set-Content -Encoding ascii installer/dist/TurtleClient-Setup.exe.sha256
       - name: Build signed installer in a draft release
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
@@ -49,7 +75,10 @@ jobs:
           releaseName: TurtleClient Launcher __VERSION__
           releaseBody: |
             Automatischer Windows-x64-Build von TurtleClient Launcher.
-            Den Setup-Installer einmal installieren; zukünftige Versionen werden beim Start signiert aktualisiert.
+            **Erste Installation: TurtleClient-Setup.exe herunterladen.**
+            Der native Turtle-Bootstrap lädt die aktuelle Version und prüft ihre Signatur.
+            Den Launcher einmal installieren; zukünftige Versionen werden beim Start signiert aktualisiert.
+            Die versionsgebundene NSIS-Datei bleibt das Paket für den eingebauten Auto-Updater.
             Quellstand: ${{ github.sha }}
           releaseDraft: true
           prerelease: false
@@ -72,5 +101,7 @@ jobs:
           bun scripts/turtle-release.mjs manifest updater-manifest/latest.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release upload "v$env:RELEASE_VERSION" updater-manifest/latest.json --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release upload "v$env:RELEASE_VERSION" installer/dist/TurtleClient-Setup.exe installer/dist/TurtleClient-Setup.exe.sig installer/dist/TurtleClient-Setup.exe.sha256 --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release edit "v$env:RELEASE_VERSION" --draft=false --latest
