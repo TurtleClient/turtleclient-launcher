@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
+mod gift_notes;
 mod playtime;
 mod wardrobe;
 #[cfg(test)]
@@ -279,7 +280,7 @@ async fn remove(
     service.commit(next)?;
     Ok(StatusCode::NO_CONTENT)
 }
-fn router(state: Shared, clock: playtime::Clock) -> Router {
+fn router(state: Shared, clock: playtime::Clock, notes: gift_notes::Notes) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/session", post(login))
@@ -290,6 +291,7 @@ fn router(state: Shared, clock: playtime::Clock) -> Router {
         .layer(DefaultBodyLimit::max(1024))
         .with_state(state.clone())
         .merge(playtime::router(state.clone(), clock))
+        .merge(gift_notes::router(state.clone(), notes))
         .merge(wardrobe::router(state))
 }
 #[tokio::main]
@@ -312,8 +314,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clock = playtime::Clock::load(PathBuf::from(
         std::env::var("TURTLE_PLAYTIME_FILE").unwrap_or_else(|_| "playtime.json".into()),
     ))?;
+    // Gift notes beside it, for the same reason.
+    let notes = gift_notes::Notes::load(PathBuf::from(
+        std::env::var("TURTLE_GIFT_NOTES_FILE").unwrap_or_else(|_| "gift-notes.json".into()),
+    ))?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await?;
-    axum::serve(listener, router(state, clock)).await?;
+    axum::serve(listener, router(state, clock, notes)).await?;
     Ok(())
 }
 
@@ -359,8 +365,9 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let clock = playtime::Clock::load(directory.join("playtime.json")).unwrap();
+        let notes = gift_notes::Notes::load(directory.join("gift-notes.json")).unwrap();
         let server =
-            tokio::spawn(async move { axum::serve(listener, router(state, clock)).await.unwrap() });
+            tokio::spawn(async move { axum::serve(listener, router(state, clock, notes)).await.unwrap() });
         let client = reqwest::Client::new();
         assert_eq!(
             client
@@ -427,6 +434,15 @@ mod tests {
         let restored: Database = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
         assert_eq!(restored.users[&a].friends, BTreeSet::from([b]));
         assert_eq!(restored.users[&b].friends, BTreeSet::from([a]));
+        // Gift notes: friends only, and the recipient reads them.
+        let note = |to: Uuid| serde_json::json!({"id":Uuid::from_u128(99),"to":to,"text":" Für dich! ","item":{"kind":"aura","id":"demon_aura","hash":"","slot":"aura","name":"Infernal Aura","rarity":"epic"}});
+        assert_eq!(client.post(format!("{base}/gift-note")).bearer_auth("alice-session").json(&note(b)).send().await.unwrap().status(), StatusCode::NO_CONTENT);
+        assert_eq!(client.post(format!("{base}/gift-note")).bearer_auth("carol-session").json(&note(a)).send().await.unwrap().status(), StatusCode::FORBIDDEN);
+        let bob: serde_json::Value = client.get(format!("{base}/gift-notes")).bearer_auth("bob-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(bob["notes"][0]["text"], "Für dich!");
+        assert_eq!(bob["notes"][0]["item"]["id"], "demon_aura");
+        let carol: serde_json::Value = client.get(format!("{base}/gift-notes")).bearer_auth("carol-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(carol["notes"], serde_json::json!([]));
         assert_eq!(
             client
                 .delete(format!("{base}/friends/{b}"))

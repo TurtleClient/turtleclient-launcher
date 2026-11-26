@@ -26,6 +26,7 @@ export function CheckoutDialog({ onClose }: { onClose: () => void }) {
   const [quoting, setQuoting] = useState(false)
   const [step, setStep] = useState<Step>('review')
   const [results, setResults] = useState<CheckoutResult[]>([])
+  const [message, setMessage] = useState('')
   const asked = useRef(0)
 
   const summary = cartSummary(inventory, cart)
@@ -58,7 +59,7 @@ export function CheckoutDialog({ onClose }: { onClose: () => void }) {
     if (!ready) return
     setStep('running')
     setResults([])
-    await checkout(gift ? { peer, quotes: quotes ?? {} } : null, setResults)
+    await checkout(gift ? { peer, quotes: quotes ?? {}, message } : null, setResults)
     setStep('done')
   }
 
@@ -111,6 +112,13 @@ export function CheckoutDialog({ onClose }: { onClose: () => void }) {
                 <div className="ts-sum faint"><span>{t('Turtle: your Shells')}</span><Shells amount={balance} locale={locale} /></div>
                 <div className={'ts-sum faint' + (short ? ' bad' : '')}><span>{t('Turtle: after purchase')}</span>{short ? <span>{t('Turtle: {n} Shells missing', { n: (total - balance).toLocaleString(locale) })}</span> : <Shells amount={balance - total} locale={locale} />}</div>
               </div>
+            ) : null}
+            {gift && peer ? (
+              <label className="ts-message">
+                <span>{t('Turtle: message for {name}', { name: friend?.name || '' })}</span>
+                <textarea value={message} maxLength={140} rows={2} placeholder={t('Turtle: write a few words (optional)')} onChange={e => setMessage(e.target.value)} />
+                <small>{message.length}/140</small>
+              </label>
             ) : null}
             {gift ? <p className="faint-note">{t('Turtle: your friend must accept each gift. If they decline, you get your Shells back.')}</p> : null}
             <div className="ts-modal-acts">

@@ -32,6 +32,8 @@ import {
 const ClassicSidebar = lazy(() => import('./components/ClassicSidebar').then((m) => ({ default: m.ClassicSidebar })))
 const InstancePage = lazy(() => import('./modals/InstancePage').then((m) => ({ default: m.InstancePage })))
 const ChestOpenHost = lazy(() => import('./components/daily/ChestOpen').then((m) => ({ default: m.ChestOpenHost })))
+// Gifts from friends: the full-screen present and the Home gift button (TurtleClient only).
+const TurtleGiftHost = lazy(() => import('./components/gifts/TurtleGiftHost'))
 // Kept out of the startup bundle: most sessions never open them, and each is mounted
 // on its first opening and stays mounted so the closing transition still plays.
 const ProjectModal = lazy(() => import('./modals/Project').then((m) => ({ default: m.ProjectModal })))
@@ -1197,6 +1199,11 @@ export function App() {
         <Suspense fallback={null}>
           <ChestOpenHost />
         </Suspense>
+        {!BRAND.services ? (
+          <Suspense fallback={null}>
+            <TurtleGiftHost />
+          </Suspense>
+        ) : null}
         <PixelTip />
       </div>
     </>

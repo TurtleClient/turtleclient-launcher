@@ -12,11 +12,22 @@ export interface CheckoutResult {
   error?: string
 }
 
+/** A friend's message with a gift and which item it is (kept by the Turtle service). */
+export interface GiftNote {
+  id: string
+  from: string
+  to: string
+  text: string
+  item: { kind: string; id: string; hash: string; slot: string; name: string; rarity: string }
+  at: number
+}
+
 interface ShopState {
   accountId: string | null
   inventory: ShopInventory | null
   me: string
   gifts: GiftRow[]
+  notes: Record<string, GiftNote>
   cart: CartLine[]
   loading: boolean
   error: string
@@ -24,7 +35,7 @@ interface ShopState {
   bump: number
 }
 
-export const useTurtleShop = create<ShopState>(() => ({ accountId: null, inventory: null, me: '', gifts: [], cart: [], loading: false, error: '', busy: null, bump: 0 }))
+export const useTurtleShop = create<ShopState>(() => ({ accountId: null, inventory: null, me: '', gifts: [], notes: {}, cart: [], loading: false, error: '', busy: null, bump: 0 }))
 
 const CART_KEY = 'turtle-shop-cart:'
 let generation = 0
@@ -64,7 +75,7 @@ function setInventory(inventory: ShopInventory) {
 export function selectShopAccount(accountId: string | null) {
   if (useTurtleShop.getState().accountId === accountId) return
   generation++
-  useTurtleShop.setState({ accountId, inventory: null, me: '', gifts: [], cart: readCart(accountId), loading: false, error: '', busy: null })
+  useTurtleShop.setState({ accountId, inventory: null, me: '', gifts: [], notes: {}, cart: readCart(accountId), loading: false, error: '', busy: null })
   if (accountId) void refreshShop()
 }
 
@@ -73,10 +84,16 @@ export async function refreshShop() {
   if (!useTurtleShop.getState().accountId) return
   useTurtleShop.setState({ loading: true, error: '' })
   try {
-    const [inventory, exchange] = await Promise.all([call<ShopInventory>('inventory'), call<{ me: string; gifts: GiftRow[] }>('gifts').catch(() => null)])
+    const accountId = useTurtleShop.getState().accountId
+    const [inventory, exchange, notes] = await Promise.all([
+      call<ShopInventory>('inventory'),
+      call<{ me: string; gifts: GiftRow[] }>('gifts').catch(() => null),
+      turtle<{ notes: GiftNote[] }>('turtle_gift_notes', { accountId }).catch(() => null),
+    ])
     if (current !== generation) return
     setInventory(inventory)
     if (exchange) useTurtleShop.setState({ me: exchange.me, gifts: exchange.gifts })
+    if (notes) useTurtleShop.setState({ notes: Object.fromEntries(notes.notes.map(note => [note.id, note])) })
   } catch (e) {
     if (current === generation) useTurtleShop.setState({ error: shopError(e) })
   } finally {
@@ -99,9 +116,14 @@ export function watchTurtleShop() {
   const timer = setInterval(() => {
     if (!document.hidden) void refreshShop()
   }, 120_000)
+  // Gifts from friends should appear soon after they are sent; only gifts and notes are asked for.
+  const gifts = setInterval(() => {
+    if (!document.hidden) void refreshGifts()
+  }, 45_000)
   return () => {
     unsubscribe()
     clearInterval(timer)
+    clearInterval(gifts)
   }
 }
 
@@ -136,6 +158,20 @@ export async function setShopPet(pet: TurtlePet | null): Promise<string> {
   } finally {
     if (current === generation) useTurtleShop.setState({ busy: null })
   }
+}
+
+/** Open gifts and their notes only, without the whole inventory. */
+export async function refreshGifts() {
+  const current = generation
+  const accountId = useTurtleShop.getState().accountId
+  if (!accountId) return
+  const [exchange, notes] = await Promise.all([
+    call<{ me: string; gifts: GiftRow[] }>('gifts').catch(() => null),
+    turtle<{ notes: GiftNote[] }>('turtle_gift_notes', { accountId }).catch(() => null),
+  ])
+  if (current !== generation) return
+  if (exchange) useTurtleShop.setState({ me: exchange.me, gifts: exchange.gifts })
+  if (notes) useTurtleShop.setState({ notes: Object.fromEntries(notes.notes.map(note => [note.id, note])) })
 }
 
 export const addToCart = (line: CartLine) => saveCart(addLine(useTurtleShop.getState().cart, line))
@@ -181,7 +217,7 @@ export async function quoteCart(peer: string): Promise<Record<string, GiftQuote 
  * Gifts use the quoted price the player confirmed; Ocean refuses a changed price.
  * A refusal stops only its line, an empty wallet stops the rest.
  */
-export async function checkout(gift: { peer: string; quotes: Record<string, GiftQuote | string> } | null, onStep?: (results: CheckoutResult[]) => void): Promise<CheckoutResult[]> {
+export async function checkout(gift: { peer: string; quotes: Record<string, GiftQuote | string>; message?: string } | null, onStep?: (results: CheckoutResult[]) => void): Promise<CheckoutResult[]> {
   const peer = gift?.peer ?? null
   const current = generation
   const results: CheckoutResult[] = []
@@ -216,7 +252,9 @@ export async function checkout(gift: { peer: string; quotes: Record<string, Gift
             continue
           }
           if (!quote.affordable) throw new Error('turtle_http_402')
-          await call('gift', { peer, id: crypto.randomUUID(), name: giftLabel(line.name), product: productOf(line), agreed: quote.price })
+          const id = crypto.randomUUID()
+          await call('gift', { peer, id, name: giftLabel(line.name), product: productOf(line), agreed: quote.price })
+          await leaveNote(id, peer, gift?.message || '', line)
           report({ key: line.key, name: line.name, status: 'gifted' })
         } else {
           const next = await call<ShopInventory>('buy', { product: productOf(line) })
@@ -240,11 +278,20 @@ export async function checkout(gift: { peer: string; quotes: Record<string, Gift
   }
 }
 
-export async function sendGift(peer: string, line: CartLine, quote: GiftQuote): Promise<string> {
+/** The message and the item for the friend's reveal; a failed note never undoes the gift. */
+async function leaveNote(id: string, to: string, text: string, line: CartLine) {
+  const accountId = useTurtleShop.getState().accountId
+  const item = { kind: line.kind, id: line.id, hash: line.hash, slot: line.slot, name: giftLabel(line.name), rarity: line.rarity }
+  await turtle('turtle_gift_notes', { accountId, note: { id, to, text: text.trim().slice(0, 140), item } }).catch(() => undefined)
+}
+
+export async function sendGift(peer: string, line: CartLine, quote: GiftQuote, message = ''): Promise<string> {
   const current = generation
   useTurtleShop.setState({ busy: 'gift' })
   try {
-    await call('gift', { peer, id: crypto.randomUUID(), name: giftLabel(line.name), product: productOf(line), agreed: quote.price })
+    const id = crypto.randomUUID()
+    await call('gift', { peer, id, name: giftLabel(line.name), product: productOf(line), agreed: quote.price })
+    await leaveNote(id, peer, message, line)
     if (current === generation) await refreshShop()
     return ''
   } catch (e) {

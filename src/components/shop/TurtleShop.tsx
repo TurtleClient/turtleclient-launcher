@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { intlTag, useT } from '../../i18n'
-import { cartSummary, categoryOf, filterEntries, lineOf, shopEntries, TURTLE_CATEGORIES } from '../../lib/turtleShop'
-import type { CartLine, ShopCategory, ShopFilter, ShopSort } from '../../lib/turtleShop'
+import { cartSummary, categoryOf, filterEntries, shopEntries, TURTLE_CATEGORIES } from '../../lib/turtleShop'
+import type { CartLine, ShopCategory, ShopEntry, ShopFilter, ShopSort } from '../../lib/turtleShop'
 import { useAccounts } from '../../state/accounts'
 import { addToCart, claimDaily, refreshShop, removeFromCart, selectShopAccount, useTurtleShop } from '../../state/turtleShop'
 import { Icon } from '../Icon'
@@ -9,31 +9,26 @@ import { TopbarPortal } from '../TopbarPortal'
 import { CartDrawer } from './turtle/CartDrawer'
 import { CheckoutDialog } from './turtle/CheckoutDialog'
 import { GiftDialog } from './turtle/GiftDialog'
-import { GiftInbox } from './turtle/GiftInbox'
+import { PreviewDialog } from './turtle/PreviewDialog'
 import { ShellIcon, Shells } from './turtle/ShellIcon'
-import { ShopArt } from './turtle/ShopArt'
-import { CATEGORY_ICON, ShopCard, useCategoryLabel, useKindLabel } from './turtle/ShopCard'
-import { TurtleCatalog } from './TurtleCatalog'
+import { CATEGORY_ICON, ShopCard, useCategoryLabel } from './turtle/ShopCard'
 import '../../styles/pixel/shop2.css'
 import '../../styles/pixel/turtle-shop.css'
-
-type Tab = 'shop' | 'mine' | 'gifts' | 'free'
 
 /** Turtle shop: Shells balance, Ocean catalog, cart, checkout and gifts for the active Microsoft account. */
 export function TurtleShop({ on }: { on: boolean }) {
   const t = useT()
   const locale = intlTag()
-  const kind = useKindLabel()
   const categoryLabel = useCategoryLabel()
   const { list, active } = useAccounts()
   const account = list.find(a => a.id === active) || list[0]
   const accountId = account?.kind === 'microsoft' ? account.id : null
-  const { inventory, cart, gifts, me, loading, error, busy, bump } = useTurtleShop()
-  const [tab, setTab] = useState<Tab>('shop')
+  const { inventory, cart, loading, error, busy, bump } = useTurtleShop()
   const [filter, setFilter] = useState<ShopFilter>({ category: 'all', query: '', sort: 'featured', affordable: false, hideOwned: false })
   const [drawer, setDrawer] = useState(false)
   const [paying, setPaying] = useState(false)
   const [gift, setGift] = useState<CartLine | null>(null)
+  const [preview, setPreview] = useState<ShopEntry | null>(null)
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
@@ -51,10 +46,8 @@ export function TurtleShop({ on }: { on: boolean }) {
   const bundles = visible.filter(e => e.bundle)
   const items = visible.filter(e => !e.bundle)
   const inCart = new Set(cart.map(l => l.key))
-  const received = gifts.filter(g => g.to === me).length
   const plusUntil = inventory && inventory.plus_until * 1000 > Date.now() ? new Date(inventory.plus_until * 1000).toLocaleDateString(locale) : ''
   const rewards = inventory?.rewards
-  const owned = inventory?.items.filter(i => i.kind !== 'team_cape').map(lineOf) ?? []
 
   const toggleCart = (line: CartLine) => (inCart.has(line.key) ? removeFromCart(line.key) : addToCart(line))
   const patch = (next: Partial<ShopFilter>) => setFilter(f => ({ ...f, ...next }))
@@ -70,13 +63,6 @@ export function TurtleShop({ on }: { on: boolean }) {
     ...TURTLE_CATEGORIES.map(id => [id, 'i-' + CATEGORY_ICON[id], categoryLabel(id)] as [ShopCategory, string, string]),
   ]
   const present = new Set(entries.map(categoryOf))
-  const tabs: [Tab, string, string, number][] = [
-    ['shop', 'i-ws-shop', t('Turtle: shop'), 0],
-    ['mine', 'i-backpack', t('Turtle: my collection'), 0],
-    ['gifts', 'i-gift', t('Turtle: gifts'), received],
-    ['free', 'i-star', t('Turtle: free items'), 0],
-  ]
-
   return (
     <div className="ts">
       {accountId ? (
@@ -123,28 +109,10 @@ export function TurtleShop({ on }: { on: boolean }) {
         ) : null}
       </header>
 
-      <nav className="ts-tabs" aria-label={t('Turtle: Turtle Shop')}>
-        {tabs.map(([id, icon, label, badge]) => (
-          <button key={id} className={'sv-chip' + (tab === id ? ' on' : '')} aria-pressed={tab === id} onClick={() => setTab(id)}>
-            <Icon id={icon} />
-            {label}
-            {badge ? <span className="ts-badge">{badge}</span> : null}
-          </button>
-        ))}
-        {accountId ? (
-          <button className="btn sm secondary ts-refresh" disabled={loading} onClick={() => void refreshShop()}>
-            <Icon id="i-restart" />
-            {t('Turtle: refresh')}
-          </button>
-        ) : null}
-      </nav>
-
-      {tab === 'free' ? (
-        <TurtleCatalog />
-      ) : !accountId ? (
+      {!accountId ? (
         <div className="card ts-empty-card">
           <ShellIcon size={56} />
-          <p>{t('Turtle: the shop needs a Microsoft Minecraft account. Free items are available in the Free tab.')}</p>
+          <p>{t('Turtle: the shop needs a Microsoft Minecraft account.')}</p>
         </div>
       ) : error && !inventory ? (
         <div className="card ts-empty-card">
@@ -157,27 +125,6 @@ export function TurtleShop({ on }: { on: boolean }) {
           {Array.from({ length: 8 }, (_, i) => <div key={i} className="ts-card is-skeleton" />)}
           <p className="ts-sr" role="status">{t('Turtle: loading shop…')}</p>
         </div>
-      ) : tab === 'gifts' ? (
-        <GiftInbox />
-      ) : tab === 'mine' ? (
-        owned.length ? (
-          <>
-            <p className="faint-note">{t('Turtle: equip new items in the client wardrobe with Right Shift.')}</p>
-            <div className="ts-grid">
-              {owned.map(line => (
-                <article key={line.key} className={'ts-card is-owned r-' + line.rarity}>
-                  <div className="ts-card-art"><ShopArt line={line} /></div>
-                  <div className="ts-card-body"><span className="ts-kind">{kind(line)}</span><h3 title={line.name}>{line.name}</h3></div>
-                </article>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="card ts-empty-card">
-            <Icon id="i-backpack" className="icon ts-empty-ic" />
-            <p>{t('Turtle: you do not own any shop items yet.')}</p>
-          </div>
-        )
       ) : (
         <>
           {error ? <p className="ts-alert" role="alert">{t(error)}</p> : null}
@@ -203,6 +150,10 @@ export function TurtleShop({ on }: { on: boolean }) {
               </select>
               <label className="ts-toggle"><input type="checkbox" checked={filter.affordable} onChange={e => patch({ affordable: e.target.checked })} />{t('Turtle: affordable only')}</label>
               <label className="ts-toggle"><input type="checkbox" checked={filter.hideOwned} onChange={e => patch({ hideOwned: e.target.checked })} />{t('Turtle: hide owned')}</label>
+              <button className="btn sm secondary ts-refresh" disabled={loading} onClick={() => void refreshShop()}>
+                <Icon id="i-restart" />
+                {t('Turtle: refresh')}
+              </button>
             </div>
           </div>
 
@@ -210,7 +161,7 @@ export function TurtleShop({ on }: { on: boolean }) {
             <section className="ts-sec">
               <h2>{t('Turtle: bundles')}</h2>
               <div className="ts-grid is-wide">
-                {bundles.map(entry => <ShopCard key={entry.key} entry={entry} balance={balance} inCart={inCart.has(entry.key)} onCart={() => toggleCart(entry)} onGift={() => setGift(entry)} />)}
+                {bundles.map(entry => <ShopCard key={entry.key} entry={entry} balance={balance} inCart={inCart.has(entry.key)} onCart={() => toggleCart(entry)} onGift={() => setGift(entry)} onOpen={() => setPreview(entry)} />)}
               </div>
             </section>
           ) : null}
@@ -218,7 +169,7 @@ export function TurtleShop({ on }: { on: boolean }) {
             <section className="ts-sec">
               {bundles.length ? <h2>{t('Turtle: items')}</h2> : null}
               <div className="ts-grid">
-                {items.map(entry => <ShopCard key={entry.key} entry={entry} balance={balance} inCart={inCart.has(entry.key)} onCart={() => toggleCart(entry)} onGift={() => setGift(entry)} />)}
+                {items.map(entry => <ShopCard key={entry.key} entry={entry} balance={balance} inCart={inCart.has(entry.key)} onCart={() => toggleCart(entry)} onGift={() => setGift(entry)} onOpen={() => setPreview(entry)} />)}
               </div>
             </section>
           ) : null}
@@ -243,6 +194,24 @@ export function TurtleShop({ on }: { on: boolean }) {
       {accountId ? <CartDrawer open={drawer && on} onClose={() => setDrawer(false)} onCheckout={() => { setDrawer(false); setPaying(true) }} /> : null}
       {paying && on ? <CheckoutDialog onClose={() => setPaying(false)} /> : null}
       {gift && on ? <GiftDialog line={gift} onClose={() => setGift(null)} /> : null}
+      {preview && on ? (
+        <PreviewDialog
+          entry={entries.find(e => e.key === preview.key) || preview}
+          inventory={inventory}
+          inCart={inCart.has(preview.key)}
+          onCart={() => toggleCart(preview)}
+          onBuyNow={() => {
+            if (!inCart.has(preview.key)) addToCart(preview)
+            setPreview(null)
+            setPaying(true)
+          }}
+          onGift={line => {
+            setPreview(null)
+            setGift(line)
+          }}
+          onClose={() => setPreview(null)}
+        />
+      ) : null}
     </div>
   )
 }

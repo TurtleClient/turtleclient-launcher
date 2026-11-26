@@ -121,6 +121,44 @@ export function bundleLine(id: string): CartLine {
   return { key: lineKey({ kind: 'bundle', id, hash: '', bundle: true }), kind: 'bundle', id, hash: '', owner: '', name: displayName('', id), slot: 'bundle', rarity: 'legendary', bundle: true }
 }
 
+/**
+ * Bundle contents and names, as in horizon-cosmetics::turtle_catalog (BUNDLES, AURAS,
+ * TRAILS) and the client's emote names. Ocean's inventory quotes bundles by id only.
+ */
+export const TURTLE_BUNDLES: Record<string, { models: [string, string]; aura: string; trail: string; emote: string }> = {
+  demon_bundle: { models: ['demon_wings', 'demon_horns'], aura: 'demon_aura', trail: 'demon_trail', emote: 'demon_ascension' },
+  angel_bundle: { models: ['angel_wings', 'angel_halo'], aura: 'angel_aura', trail: 'angel_trail', emote: 'angel_ascension' },
+  husky_bundle: { models: ['husky_tail', 'husky_ears'], aura: 'husky_aura', trail: 'husky_trail', emote: 'husky_howl' },
+}
+const STOCK_NAMES: Record<string, string> = {
+  demon_aura: 'Infernal Aura',
+  angel_aura: 'Celestial Aura',
+  husky_aura: 'Snow Trail',
+  demon_trail: 'Infernal Trail',
+  angel_trail: 'Celestial Trail',
+  husky_trail: 'Frost Paw Trail',
+  demon_ascension: 'Demon Ascension',
+  angel_ascension: 'Celestial Rise',
+  husky_howl: 'Husky Howl',
+}
+
+/** Every part of a bundle, with catalog data where the shop lists the part on its own. */
+export function bundleParts(inv: ShopInventory | null, id: string): CartLine[] {
+  const bundle = TURTLE_BUNDLES[id]
+  if (!bundle) return []
+  const listed = (kind: string, part: string) => inv?.catalog_items.find(item => item.kind === kind && item.id === part) || inv?.items.find(item => item.kind === kind && item.id === part)
+  const part = (kind: string, slot: string, partId: string, rarity: string): CartLine => {
+    const known = listed(kind, partId)
+    return known ? lineOf(known) : { key: lineKey({ kind, id: partId, hash: '' }), kind, id: partId, hash: '', owner: 'turtle', name: STOCK_NAMES[partId] || displayName('', partId), slot, rarity }
+  }
+  return [
+    ...bundle.models.map(model => part('model', '', model, 'epic')).map(line => (line.slot ? line : { ...line, slot: line.id.endsWith('wings') || line.id.endsWith('tail') ? 'back' : 'head' })),
+    part('aura', 'aura', bundle.aura, 'epic'),
+    part('trail', 'trail', bundle.trail, 'epic'),
+    part('emote', 'emote', bundle.emote, 'legendary'),
+  ]
+}
+
 /** The product body Ocean's buy, quote and gift routes expect. */
 export function productOf(line: CartLine) {
   return line.bundle ? { kind: 'promo_bundle', id: line.id, hash: '', owner: '' } : { kind: line.kind, id: line.id, hash: line.hash, owner: line.owner }

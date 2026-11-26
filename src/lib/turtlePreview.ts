@@ -471,8 +471,10 @@ class PreviewManager {
     this.observer = new IntersectionObserver(entries => {
       for (const entry of entries) {
         const el = entry.target as HTMLElement
-        if (entry.isIntersecting) this.visible.add(el)
-        else this.visible.delete(el)
+        if (entry.isIntersecting) {
+          this.visible.add(el)
+          this.ensure(el)
+        } else this.visible.delete(el)
       }
       this.wake()
     }, { rootMargin: '80px' })
@@ -482,12 +484,36 @@ class PreviewManager {
     this.running = true
     requestAnimationFrame(this.tick)
   }
+  /**
+   * Registers a tile; its scene is built only once it scrolls into view, and only scenes
+   * out of view are dropped when there are too many. Building every tile at once used
+   * to drop the first rows of a long shop before they were ever drawn.
+   */
   attach(el: HTMLElement, items: PreviewItem[]): () => void {
     this.detach(el)
-    while (this.scenes.size >= 40) {
-      const [old] = [...this.scenes].find(([e]) => !this.visible.has(e)) || this.scenes.entries().next().value!
-      this.detach(old)
+    this.wanted.set(el, items)
+    this.observer.observe(el)
+    return () => this.detach(el)
+  }
+  private wanted = new Map<HTMLElement, PreviewItem[]>()
+  private ensure(el: HTMLElement) {
+    const items = this.wanted.get(el)
+    if (!items || this.scenes.has(el)) return
+    while (this.scenes.size >= 48) {
+      const old = [...this.scenes.keys()].find(e => !this.visible.has(e))
+      if (!old) break
+      this.drop(old)
     }
+    this.build(el, items)
+  }
+  private drop(el: HTMLElement) {
+    const state = this.scenes.get(el)
+    if (!state) return
+    this.scenes.delete(el)
+    el.classList.remove('tp-ready', 'tp-failed')
+    disposeState(state)
+  }
+  private build(el: HTMLElement, items: PreviewItem[]) {
     const canvas = el.querySelector('canvas') || document.createElement('canvas')
     if (!canvas.isConnected) el.append(canvas)
     const scene = new Scene()
@@ -525,9 +551,7 @@ class PreviewManager {
       output: canvas.getContext('2d'),
     }
     this.scenes.set(el, state)
-    this.observer.observe(el)
     void this.load(el, state, actor, shadow)
-    return () => this.detach(el)
   }
   private async load(el: HTMLElement, state: PreviewState, actor: Avatar, shadow: Mesh) {
     try {
@@ -580,13 +604,10 @@ class PreviewManager {
     }
   }
   detach(el: HTMLElement) {
-    const state = this.scenes.get(el)
-    if (!state) return
-    this.scenes.delete(el)
+    this.wanted.delete(el)
     this.visible.delete(el)
     this.observer.unobserve(el)
-    el.classList.remove('tp-ready', 'tp-failed')
-    disposeState(state)
+    this.drop(el)
   }
   private tick = (now: number) => {
     if (!this.scenes.size) {

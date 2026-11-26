@@ -61,7 +61,7 @@ export function useRarityLabel() {
   }
 }
 
-export function ShopCard({ entry, balance, inCart, onCart, onGift }: { entry: ShopEntry; balance: number; inCart: boolean; onCart: () => void; onGift: () => void }) {
+export function ShopCard({ entry, balance, inCart, onCart, onGift, onOpen }: { entry: ShopEntry; balance: number; inCart: boolean; onCart: () => void; onGift: () => void; onOpen: () => void }) {
   const t = useT()
   const kind = useKindLabel()
   const rarity = useRarityLabel()
@@ -70,12 +70,13 @@ export function ShopCard({ entry, balance, inCart, onCart, onGift }: { entry: Sh
   const ends = entry.endsAt ? new Date(entry.endsAt * 1000).toLocaleDateString(locale, { day: '2-digit', month: '2-digit' }) : ''
   return (
     <article className={'ts-card r-' + entry.rarity + (entry.owned ? ' is-owned' : '') + (entry.bundle ? ' is-bundle' : '')}>
-      <div className="ts-card-art">
+      <button className="ts-card-art" onClick={onOpen} aria-label={t('Turtle: preview') + ': ' + entry.name}>
         <ShopArt line={entry} />
         <span className="ts-rarity">{entry.bundle ? t('Turtle: bundle') : rarity(entry.rarity)}</span>
         {entry.owned ? <span className="ts-flag is-owned"><Icon id="i-check" />{t('Turtle: owned')}</span> : inCart ? <span className="ts-flag"><Icon id="i-mo-bag" />{t('Turtle: in cart')}</span> : null}
         {ends && !entry.owned ? <span className="ts-ends"><Icon id="i-clock" />{t('Turtle: until {date}', { date: ends })}</span> : null}
-      </div>
+        <span className="ts-zoom"><Icon id="i-eye" /></span>
+      </button>
       <div className="ts-card-body">
         <span className="ts-kind">{kind(entry)}</span>
         <h3 title={entry.name}>{entry.name}</h3>
@@ -84,7 +85,7 @@ export function ShopCard({ entry, balance, inCart, onCart, onGift }: { entry: Sh
             {entry.owned ? t('Turtle: owned') : entry.plusOnly ? <span className="ts-plus"><Icon id="i-crown" />{t('Turtle: Turtle Plus only')}</span> : entry.price === 0 ? t('Turtle: free') : <Shells amount={entry.price ?? 0} locale={locale} />}
           </span>
           <span className="ts-acts">
-            {giftable(entry) && entry.price !== null ? (
+            {giftable(entry) && entry.price !== null && !entry.plusOnly ? (
               <button className="btn sm secondary ts-ic-btn" onClick={onGift} aria-label={t('Turtle: gift') + ': ' + entry.name} data-tip={t('Turtle: gift')}>
                 <Icon id="i-gift" />
               </button>

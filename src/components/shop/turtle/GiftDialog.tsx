@@ -23,6 +23,7 @@ export function GiftDialog({ line, onClose }: { line: CartLine; onClose: () => v
   const [quote, setQuote] = useState<GiftQuote | null>(null)
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
+  const [message, setMessage] = useState('')
   const asked = useRef(0)
   const friend = friends.find(f => f.uuid === peer)
   const balance = inventory?.balance ?? 0
@@ -39,7 +40,7 @@ export function GiftDialog({ line, onClose }: { line: CartLine; onClose: () => v
 
   async function send() {
     if (!quote || !peer) return
-    const failure = await sendGift(peer, line, quote)
+    const failure = await sendGift(peer, line, quote, message)
     if (failure) setError(failure)
     else setSent(true)
   }
@@ -88,6 +89,13 @@ export function GiftDialog({ line, onClose }: { line: CartLine; onClose: () => v
             {quote?.owned ? <p className="ts-alert">{t('Turtle: your friend already owns this or has it waiting as a gift.')}</p> : null}
             {quote && !quote.affordable ? <p className="ts-alert">{t('Turtle: not enough Shells for this purchase.')}</p> : null}
             {error ? <p className="ts-alert" role="alert">{t(error)}</p> : null}
+            {peer ? (
+              <label className="ts-message">
+                <span>{t('Turtle: message for {name}', { name: friend?.name || '' })}</span>
+                <textarea value={message} maxLength={140} rows={2} placeholder={t('Turtle: write a few words (optional)')} onChange={e => setMessage(e.target.value)} />
+                <small>{message.length}/140</small>
+              </label>
+            ) : null}
             <p className="faint-note">{t('Turtle: your friend must accept each gift. If they decline, you get your Shells back.')}</p>
             <div className="ts-modal-acts">
               <button className="btn md secondary" onClick={close}>{t('Turtle: cancel')}</button>

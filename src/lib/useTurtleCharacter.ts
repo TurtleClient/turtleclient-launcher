@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
-import type { Object3D } from 'three'
 import type { SkinViewEngine } from '../vendor/mine3d'
 import { useAccounts } from '../state/accounts'
 import { useTurtleWardrobe } from '../state/turtleWardrobe'
@@ -37,17 +36,10 @@ export function useTurtleCharacter(viewer:RefObject<SkinViewEngine | null>,ready
       // Auras and trails as on the website and in the client: drawn around the figure.
       const {turtleAura,turtleTrail}=await import('./turtleEffects')
       if(!alive)return
-      const started=performance.now()/1000
       for(const worn of wardrobe.effects){
+        // The effect animates itself each frame, exactly as the client draws it.
         const effect=worn.kind==='aura'?turtleAura(worn.id):turtleTrail(worn.id)
         effect.object.position.y=-FEET_BELOW_NECK
-        let ticking=false
-        effect.object.traverse((node:Object3D)=>{
-          if(ticking || !('isSprite' in node || 'isMesh' in node))return
-          ticking=true
-          node.onBeforeRender=()=>effect.update(performance.now()/1000-started)
-        })
-        effect.update(0)
         engine.attachCosmetic('root',effect.object)
         effects.push(effect)
       }

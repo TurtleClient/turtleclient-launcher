@@ -129,11 +129,29 @@ that key, and only while the client is closed, so the game cannot overwrite the
 new order when it saves its settings.
 
 Previews in the shop, wardrobe tiles and Home follow the Turtle website's
-renderer: the launcher's Turtle model geometry on a bendy figure, auras and
-trails, capes from `/api/shop/asset/<hash>` and emote or pet clips. The clips are
-the website's preview files, served read-only by nginx on the IP host as
-`/turtleclient/previews/<id>.json` (`[a-z0-9_]` names only). One shared WebGL
-renderer draws every visible preview.
+renderer: the launcher's Turtle model geometry on a bendy figure wearing the
+player's own skin, capes from `/api/shop/asset/<hash>` and emote or pet clips. The
+clips are the website's preview files, served read-only by nginx on the IP host
+as `/turtleclient/previews/<id>.json` (`[a-z0-9_]` names only). One shared WebGL
+renderer draws every visible preview and builds a tile's scene only when it
+scrolls into view.
+
+Auras and trails are a port of the client's `turtle_auras.rs` and
+`turtle_trails.rs` (horizon-client-render) with the client's own sprite atlases in
+`public/turtle/`, so their patterns, colours and timing match the game. Clicking a
+shop item opens a large preview; a bundle shows everything together and each of
+its parts (contents as in `turtle_catalog::BUNDLES`). Shop requests send
+`x-turtle-dj: 1`, so Ocean reports Mythic instead of folding it into Legendary.
+
+### Gifts with a message
+
+A gift can carry a message of up to 140 characters. Ocean stores the gift itself;
+the Turtle service keeps the note under the gift's id (`POST /social/gift-note`,
+friends only, `GET /social/gift-notes`) together with which item it is, in
+`gift-notes.json` beside `friends.json` for 30 days. When a friend's gift
+arrives, the launcher shows a full-screen present with the message; opening it
+accepts the gift in Ocean and reveals the item on the player's own skin. While
+gifts are waiting, Home shows a gift button. Gifts are checked every 45 seconds.
 
 ### Playtime
 

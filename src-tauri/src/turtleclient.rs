@@ -186,8 +186,8 @@ pub async fn turtle_launch(account_id: Option<String>, nick: String) -> Result<(
     Ok(())
 }
 
-/// One playtime heartbeat to the Turtle service with the account's friends session.
-async fn playtime_request(account_id: &str, playing: Option<bool>) -> Result<Value, String> {
+/// A call to the Turtle service with the account's friends session (renewed once on 401).
+async fn friends_call(account_id: &str, method: reqwest::Method, path: &str, body: Option<Value>) -> Result<Value, String> {
     let mut retried = false;
     loop {
         turtle_friends_connect(account_id.to_string()).await?;
@@ -197,16 +197,47 @@ async fn playtime_request(account_id: &str, playing: Option<bool>) -> Result<Val
             .get(account_id)
             .map(|s| s.token.clone())
             .ok_or("turtle_friends_connect_required")?;
-        let result = match playing {
-            Some(playing) => request(reqwest::Method::POST, "/social/playtime", Some(json!({"playing":playing})), Some(&token)).await,
-            None => request(reqwest::Method::GET, "/social/playtime", None, Some(&token)).await,
-        };
+        let result = request(method.clone(), path, body.clone(), Some(&token)).await;
         if result.as_ref().err().is_some_and(|e| e == "turtle_http_401") && !retried {
             sessions().lock().unwrap_or_else(|e| e.into_inner()).remove(account_id);
             retried = true;
             continue;
         }
         return result;
+    }
+}
+/// One playtime heartbeat to the Turtle service with the account's friends session.
+async fn playtime_request(account_id: &str, playing: Option<bool>) -> Result<Value, String> {
+    match playing {
+        Some(playing) => friends_call(account_id, reqwest::Method::POST, "/social/playtime", Some(json!({"playing":playing}))).await,
+        None => friends_call(account_id, reqwest::Method::GET, "/social/playtime", None).await,
+    }
+}
+/// Rebuilds a gift note from webview input: the message and which item the gift is.
+fn gift_note(note: Value) -> Result<Value, String> {
+    let text = |key: &str| note[key].as_str().unwrap_or_default().to_string();
+    let item = &note["item"];
+    let field = |key: &str| item[key].as_str().unwrap_or_default().to_string();
+    let message = text("text");
+    if !valid_uuid(&text("id"))
+        || !valid_uuid(&text("to"))
+        || message.chars().count() > 140
+        || field("name").chars().count() > 48
+        || !(field("hash").is_empty() || hex(&field("hash"), 64))
+    {
+        return Err("turtle_action_invalid".into());
+    }
+    Ok(json!({"id":text("id"),"to":text("to"),"text":message,"item":{"kind":field("kind"),"id":field("id"),"hash":field("hash"),"slot":field("slot"),"name":field("name"),"rarity":field("rarity")}}))
+}
+/// Gift notes: send one with a gift, or list the notes for and from this player.
+#[tauri::command]
+pub async fn turtle_gift_notes(account_id: String, note: Option<Value>) -> Result<Value, String> {
+    if engine::mc_token(&account_id).is_none() {
+        return Err("turtle_login_required".into());
+    }
+    match note {
+        Some(note) => friends_call(&account_id, reqwest::Method::POST, "/social/gift-note", Some(gift_note(note)?)).await,
+        None => friends_call(&account_id, reqwest::Method::GET, "/social/gift-notes", None).await,
     }
 }
 /// While the native client runs, the server credits the time between beats (one a minute);
@@ -303,6 +334,10 @@ async fn request(
     let mut req = engine::client()
         .request(method, format!("{BASE}{path}"))
         .timeout(Duration::from_secs(20));
+    if path.starts_with("/api/social/") {
+        // Ocean folds Mythic into Legendary for older clients unless asked for the full rarity.
+        req = req.header("x-turtle-dj", "1");
+    }
     if let Some(token) = token {
         req = req.bearer_auth(token);
     }
@@ -1023,6 +1058,16 @@ mod tests {
         assert_eq!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle_1","mode":1,"personality":2,"x":1}))).unwrap(), json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle_1","mode":1,"personality":2}));
         assert!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"no spaces","mode":0,"personality":0}))).is_err());
         assert!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle","mode":3,"personality":0}))).is_err());
+        let note = json!({"id":"00000000-0000-4000-8000-000000000001","to":"00000000-0000-0000-0000-000000000002","text":"Viel Spaß!","item":{"kind":"aura","id":"demon_aura","hash":"","slot":"aura","name":"Infernal Aura","rarity":"epic","extra":1},"x":1});
+        let clean = gift_note(note.clone()).unwrap();
+        assert_eq!(clean["item"].as_object().unwrap().len(), 6);
+        assert!(clean.get("x").is_none());
+        let mut long = note.clone();
+        long["text"] = json!("x".repeat(141));
+        assert!(gift_note(long).is_err());
+        let mut stranger = note;
+        stranger["to"] = json!("someone");
+        assert!(gift_note(stranger).is_err());
         assert!(valid_favorites(&["wave".into(), "spooky_dance".into()]));
         assert!(!valid_favorites(&["wave".into(), "wave".into()]));
         assert!(!valid_favorites(&["../x".into()]));
