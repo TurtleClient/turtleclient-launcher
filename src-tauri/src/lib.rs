@@ -311,6 +311,7 @@ pub fn run() {
             turtleclient::turtle_cape,
             turtleclient::turtle_friends_connect,
             turtleclient::turtle_friends,
+            turtleclient::turtle_shop,
             commands::content::core_version,
             commands::system::app_version,
             commands::system::remember_install_id,

@@ -1,0 +1,244 @@
+/* ============================================================
+   Turtle shop (src/components/shop/TurtleShop.tsx): Shells wallet,
+   Ocean catalog, cart drawer, checkout and gifts. Same pixel language
+   as the rest of the launcher: dense accent, cut corners, rarity tones.
+   ============================================================ */
+
+/* No container query on .ts: layout containment would trap the fixed drawer, button and windows. */
+.ts { display: flex; flex-direction: column; gap: 16px; padding-bottom: 84px; }
+.ts .r-common { --ts-tone: var(--m-rarity-common); }
+.ts .r-rare, .ts-drawer .r-rare, .ts-checkout .r-rare, .ts-gift .r-rare { --ts-tone: var(--m-rarity-rare); }
+.ts .r-epic, .ts-drawer .r-epic, .ts-checkout .r-epic, .ts-gift .r-epic { --ts-tone: var(--m-rarity-epic); }
+.ts .r-legendary, .ts-drawer .r-legendary, .ts-checkout .r-legendary, .ts-gift .r-legendary { --ts-tone: var(--m-rarity-legendary); }
+.ts .r-mythic, .ts-drawer .r-mythic, .ts-checkout .r-mythic, .ts-gift .r-mythic { --ts-tone: var(--m-rarity-mythic); }
+.shell-ic { flex: none; image-rendering: pixelated; }
+.shells { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shells b { font-weight: 850; }
+
+/* ---------- Topbar: balance and cart ---------- */
+.ts-top { display: flex; align-items: center; gap: 8px; }
+.ts-bal {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px;
+  background: var(--m-surface-2); font-variant-numeric: tabular-nums; --px-n: 5px; clip-path: var(--px-5);
+}
+.ts-bal b { font-size: 16px; font-weight: 850; }
+.ts-bal.bump, .ts-wallet-bal.bump { animation: ts-bump 0.5s var(--m-ease-smooth); }
+.ts-bal.bump b, .ts-wallet-bal.bump b { color: var(--m-accent); }
+@keyframes ts-bump { 0% { transform: none; } 34% { transform: translateY(-4px) scale(1.08); } 67% { transform: translateY(1px); } 100% { transform: none; } }
+.ts-top-cart { position: relative; width: 38px; height: 38px; padding: 0; justify-content: center; }
+.ts-top-cart > svg.icon { width: 18px; height: 18px; }
+.ts-top-cart .ts-badge { position: absolute; top: -4px; right: -4px; }
+.ts-badge {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--m-accent); color: var(--px-on-accent); font-size: 11px; font-weight: 900; --px-n: 3px; clip-path: var(--px-5);
+}
+
+/* ---------- Hero with wallet ---------- */
+.card.ts-hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 20px; align-items: center; padding: 22px 24px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--m-accent) 22%, transparent), transparent 60%),
+    var(--m-surface);
+}
+.ts-eyebrow { font-size: 12px; font-weight: 850; letter-spacing: 0.12em; text-transform: uppercase; color: var(--m-accent); }
+.ts-hero h1 { margin: 4px 0 6px; font-size: 30px; font-weight: 900; letter-spacing: -0.02em; }
+.ts-hero p { margin: 0; max-width: 520px; color: var(--m-fg-muted); }
+.ts-wallet {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 240px; padding: 14px 16px;
+  background: var(--m-inset); --px-n: 5px; clip-path: var(--px-5);
+}
+.ts-wallet-label { font-size: 12px; font-weight: 800; color: var(--m-fg-faint); text-transform: uppercase; letter-spacing: 0.08em; }
+.ts-wallet-bal { display: inline-flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+.ts-wallet-bal b { font-size: 34px; font-weight: 900; letter-spacing: -0.02em; line-height: 1; }
+.ts-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 12px; font-weight: 800;
+  background: var(--m-surface-2); color: var(--m-fg-muted); --px-n: 4px; clip-path: var(--px-5);
+}
+.ts-chip > svg.icon { width: 14px; height: 14px; }
+.ts-chip.is-plus { background: color-mix(in srgb, var(--m-rarity-legendary) 24%, var(--m-surface-2)); color: var(--m-fg); }
+.ts-daily > svg.icon { width: 16px; height: 16px; }
+.ts-note { font-size: 12px; color: var(--m-fg-muted); max-width: 260px; text-align: right; }
+
+/* ---------- Tabs and tools ---------- */
+.ts-tabs { display: flex; gap: 8px; align-items: center; overflow-x: auto; padding: 2px 0; }
+.ts-tabs .sv-chip .ts-badge { margin-left: 2px; }
+.ts-refresh { margin-left: auto; flex: none; }
+.ts-refresh > svg.icon { width: 14px; height: 14px; }
+.ts-tools { display: flex; flex-direction: column; gap: 10px; }
+.ts-cats { display: flex; gap: 6px; flex-wrap: wrap; }
+.ts-cats .sv-chip { height: 34px; font-size: 13px; }
+.ts-search-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ts-search { display: flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 180px; }
+.ts-search > svg.icon { width: 16px; height: 16px; color: var(--m-fg-faint); }
+.ts-search input { flex: 1; min-width: 0; background: none; border: 0; color: inherit; font: inherit; outline: none; }
+.ts-sort { flex: none; }
+.ts-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--m-fg-muted); cursor: pointer; }
+.ts-toggle input { accent-color: var(--m-accent); }
+
+/* ---------- Grid and cards ---------- */
+.ts-sec { display: flex; flex-direction: column; gap: 10px; }
+.ts-sec > h2 { margin: 4px 0 0; font-size: 20px; font-weight: 900; letter-spacing: -0.01em; }
+.ts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.ts-grid.is-wide { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.ts-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; background: var(--m-surface);
+  --px-n: 5px; clip-path: var(--px-5); transition: transform 0.15s var(--m-ease-smooth), background 0.15s;
+}
+.ts-card:hover { transform: translateY(-2px); background: var(--m-raised); }
+.ts-card.is-skeleton { min-height: 250px; background: linear-gradient(90deg, var(--m-surface) 0%, var(--m-raised) 50%, var(--m-surface) 100%); background-size: 200% 100%; animation: ts-shimmer 1.4s linear infinite; }
+@keyframes ts-shimmer { to { background-position: -200% 0; } }
+.ts-card-art { position: relative; }
+.ts-art {
+  display: grid; place-items: center; aspect-ratio: 16 / 13; overflow: hidden;
+  background:
+    radial-gradient(80% 80% at 50% 40%, color-mix(in srgb, var(--ts-tone, var(--m-rarity-common)) 30%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--ts-tone, var(--m-rarity-common)) 14%, var(--m-inset)), var(--m-inset));
+  box-shadow: inset 0 -3px 0 var(--ts-tone, var(--m-rarity-common));
+}
+.ts-art canvas, .ts-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.ts-art img { padding: 12%; }
+.ts-art > svg.icon { width: 34%; height: 34%; color: var(--ts-tone, var(--m-fg-muted)); }
+.ts-grid.is-wide .ts-art { aspect-ratio: 16 / 8; }
+.ts-art.is-bundle.t-angel { background: radial-gradient(70% 90% at 50% 30%, hsl(48 90% 70% / 0.45), transparent 70%), linear-gradient(160deg, hsl(210 40% 30%), var(--m-inset)); }
+.ts-art.is-bundle.t-demon { background: radial-gradient(70% 90% at 50% 30%, hsl(5 85% 55% / 0.5), transparent 70%), linear-gradient(160deg, hsl(350 50% 18%), var(--m-inset)); }
+.ts-art.is-bundle.t-husky { background: radial-gradient(70% 90% at 50% 30%, hsl(195 85% 65% / 0.45), transparent 70%), linear-gradient(160deg, hsl(210 35% 24%), var(--m-inset)); }
+.ts-art.is-bundle > svg.icon { color: #fff; filter: drop-shadow(0 3px 0 rgb(0 0 0 / 0.35)); }
+.ts-rarity {
+  position: absolute; top: 8px; left: 8px; height: 22px; display: inline-flex; align-items: center; padding: 0 8px;
+  font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em;
+  background: color-mix(in srgb, #000 50%, transparent); color: var(--ts-tone, #fff); --px-n: 3px; clip-path: var(--px-5);
+}
+.ts-flag, .ts-ends {
+  position: absolute; right: 8px; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px;
+  font-size: 11px; font-weight: 850; --px-n: 3px; clip-path: var(--px-5);
+}
+.ts-flag { top: 8px; background: var(--m-accent); color: var(--px-on-accent); }
+.ts-flag.is-owned { background: color-mix(in srgb, #000 55%, transparent); color: #fff; }
+.ts-ends { bottom: 10px; background: color-mix(in srgb, #000 55%, transparent); color: #fff; }
+.ts-flag > svg.icon, .ts-ends > svg.icon { width: 12px; height: 12px; }
+.ts-card-body { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 12px; min-width: 0; flex: 1; }
+.ts-kind { font-size: 11px; font-weight: 800; color: var(--m-fg-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+.ts-card h3 { margin: 0 0 8px; font-size: 15px; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-card-foot { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: auto; }
+.ts-price { display: flex; align-items: center; min-height: 22px; font-size: 15px; font-weight: 850; min-width: 0; }
+.ts-card-foot .ts-acts { display: flex; }
+.ts-card-foot .ts-cart-btn { flex: 1; justify-content: center; }
+.ts-grid.is-wide .ts-card-foot { flex-direction: row; align-items: center; justify-content: space-between; }
+.ts-grid.is-wide .ts-card-foot .ts-cart-btn { flex: none; }
+.ts-price.is-short b { color: var(--m-danger); }
+.ts-plus { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--m-rarity-legendary); }
+.ts-plus > svg.icon { width: 14px; height: 14px; }
+.ts-acts { display: inline-flex; gap: 6px; flex: none; }
+.ts-ic-btn { width: 32px; height: 32px; padding: 0; justify-content: center; }
+.ts-ic-btn > svg.icon { width: 16px; height: 16px; }
+.ts-cart-btn { gap: 6px; }
+:root .btn.ts-cart-btn.is-in, :root .btn.ts-cart-btn.is-in:focus { background: color-mix(in srgb, var(--m-accent) 22%, var(--m-surface-2)); color: var(--m-fg); }
+:root .btn.ts-cart-btn.is-in:hover { background: color-mix(in srgb, var(--m-danger) 28%, var(--m-surface-2)); color: var(--m-fg); }
+.ts-cart-btn > svg.icon { width: 14px; height: 14px; }
+.ts-card.is-owned .ts-art { filter: saturate(0.75); }
+@media (max-width: 980px) {
+  .card.ts-hero { grid-template-columns: minmax(0, 1fr); }
+  .ts-wallet { align-items: flex-start; }
+  .ts-note { text-align: left; }
+}
+
+/* ---------- Empty and alert states ---------- */
+.card.ts-empty-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 36px 20px; text-align: center; }
+.card.ts-empty-card p { margin: 0; max-width: 460px; }
+.ts-empty-ic { width: 42px; height: 42px; color: var(--m-fg-faint); }
+.ts-alert { margin: 0; padding: 10px 12px; font-size: 13px; font-weight: 700; background: color-mix(in srgb, var(--m-danger) 18%, var(--m-surface-2)); --px-n: 4px; clip-path: var(--px-5); }
+.ts-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---------- Floating cart button ---------- */
+.ts-cart-fab {
+  position: fixed; right: 28px; bottom: 24px; z-index: 40; display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 18px;
+  border: 0; cursor: pointer; font: inherit; font-weight: 850; background: var(--m-accent); color: var(--px-on-accent);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35); --px-n: 6px; clip-path: var(--px-5);
+}
+.ts-cart-fab > svg.icon { width: 20px; height: 20px; }
+.ts-cart-fab .ts-badge { background: var(--px-on-accent); color: var(--m-accent); }
+.ts-cart-fab:hover { filter: brightness(1.08); }
+
+/* ---------- Cart drawer ---------- */
+.ts-scrim { position: fixed; inset: 0; z-index: 900; background: rgb(0 0 0 / 0.45); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.ts-scrim.on { opacity: 1; pointer-events: auto; }
+.ts-drawer {
+  /* Starts under the 44px window title bar, which keeps its own controls on top. */
+  position: fixed; top: 44px; right: 0; bottom: 0; z-index: 901; display: flex; flex-direction: column; width: min(420px, 100vw);
+  background: var(--m-surface); box-shadow: -12px 0 40px rgb(0 0 0 / 0.4); transform: translateX(102%); transition: transform 0.25s var(--m-ease-smooth);
+}
+.ts-drawer.on { transform: none; }
+.ts-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 12px; }
+.ts-drawer-head h2, .ts-inbox-sec h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 20px; font-weight: 900; }
+.ts-drawer-head h2 > svg.icon { width: 20px; height: 20px; }
+.ts-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; font-size: 12px; background: var(--m-surface-2); color: var(--m-fg-muted); --px-n: 3px; clip-path: var(--px-5); }
+.ts-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--m-fg-muted); }
+.ts-lines { list-style: none; margin: 0; padding: 0 12px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+.ts-lines.compact { padding: 0; flex: none; max-height: 300px; margin: 12px 0; }
+.ts-line { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 8px; background: var(--m-surface-2); --px-n: 4px; clip-path: var(--px-5); }
+.ts-lines.compact .ts-line { grid-template-columns: 40px minmax(0, 1fr) auto; }
+.ts-line.is-off { opacity: 0.6; }
+.ts-line-art { width: 48px; height: 48px; display: block; }
+.ts-lines.compact .ts-line-art { width: 40px; height: 40px; }
+.ts-line-art .ts-art { aspect-ratio: 1; width: 100%; height: 100%; --px-n: 3px; clip-path: var(--px-5); }
+.ts-line-art.lg { width: 72px; height: 72px; }
+.ts-line-body { display: flex; flex-direction: column; min-width: 0; }
+.ts-line-body b { font-size: 14px; font-weight: 850; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-line-body small, .ts-line-price small { font-size: 12px; color: var(--m-fg-faint); }
+.ts-line-price small.ok { color: var(--m-accent); }
+.ts-line-price small.bad { color: var(--m-danger); }
+.ts-line-x { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; cursor: pointer; background: none; color: var(--m-fg-faint); }
+.ts-line-x:hover { color: var(--m-danger); }
+.ts-line-x > svg.icon { width: 16px; height: 16px; }
+.ts-line-ic { display: grid; place-items: center; width: 40px; height: 40px; }
+.ts-line-ic > svg.icon { width: 18px; height: 18px; }
+.ts-line.st-bought .ts-line-ic, .ts-line.st-gifted .ts-line-ic { color: var(--m-accent); }
+.ts-line.st-skipped .ts-line-ic { color: var(--m-fg-faint); }
+.ts-line.st-failed .ts-line-ic { color: var(--m-danger); }
+.ts-drawer-foot { display: flex; flex-direction: column; gap: 6px; padding: 14px 18px 18px; border-top: 2px solid var(--m-inset); }
+.ts-sum { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 850; }
+.ts-sum.faint { font-size: 13px; font-weight: 700; color: var(--m-fg-muted); }
+.ts-sum.bad, .ts-sum.bad b { color: var(--m-danger); }
+.ts-drawer-acts, .ts-modal-acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.ts-drawer-acts .btn.primary { flex: 1; justify-content: center; }
+
+/* ---------- Checkout and gift windows ---------- */
+.ts-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.ts-modal-head h3 { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.ts-modal-head h3 > svg.icon { width: 20px; height: 20px; color: var(--m-accent); }
+.ts-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; background: var(--m-inset); --px-n: 5px; clip-path: var(--px-5); }
+.ts-seg button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; border: 0; cursor: pointer;
+  background: none; color: var(--m-fg-muted); font: inherit; font-weight: 800; --px-n: 4px; clip-path: var(--px-5);
+}
+.ts-seg button > svg.icon { width: 16px; height: 16px; }
+.ts-seg button.on { background: var(--m-accent); color: var(--px-on-accent); }
+.ts-friends { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; max-height: 148px; overflow-y: auto; }
+.ts-friend {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 6px; border: 0; cursor: pointer;
+  background: var(--m-surface-2); color: var(--m-fg); font: inherit; font-weight: 800; --px-n: 4px; clip-path: var(--px-5);
+}
+.ts-friend:hover { background: var(--m-raised); }
+.ts-friend.on { background: color-mix(in srgb, var(--m-accent) 30%, var(--m-surface-2)); box-shadow: inset 0 0 0 2px var(--m-accent); }
+.ts-dot { width: 8px; height: 8px; background: var(--m-accent); }
+.ts-totals { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; margin: 4px 0 10px; background: var(--m-inset); --px-n: 4px; clip-path: var(--px-5); }
+.ts-gift-item { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.ts-gift-item small { display: block; font-size: 12px; color: var(--m-fg-faint); text-transform: uppercase; font-weight: 800; letter-spacing: 0.06em; }
+.ts-gift-item b { font-size: 18px; font-weight: 900; }
+.ts-gift .ts-alert, .ts-checkout .faint-note, .ts-gift .faint-note { margin: 8px 0 0; }
+.ts-done { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
+.ts-done p { margin: 0; }
+.ts-done-ic { display: grid; place-items: center; width: 44px; height: 44px; flex: none; background: var(--m-accent); color: var(--px-on-accent); --px-n: 5px; clip-path: var(--px-5); }
+.ts-done-ic.bad { background: var(--m-danger); color: #fff; }
+.ts-done-ic > svg.icon { width: 22px; height: 22px; }
+
+/* ---------- Gift inbox ---------- */
+.ts-inbox { display: flex; flex-direction: column; gap: 12px; }
+.card.ts-inbox-sec { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.ts-inbox-sec h2 { font-size: 17px; margin-bottom: 4px; }
+.ts-gift-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; background: var(--m-surface-2); --px-n: 4px; clip-path: var(--px-5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-bal.bump, .ts-wallet-bal.bump, .ts-card.is-skeleton { animation: none !important; }
+  .ts-card, .ts-drawer, .ts-scrim { transition: none; }
+}

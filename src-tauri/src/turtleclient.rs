@@ -513,6 +513,226 @@ pub async fn turtle_friends(
     result
 }
 
+/// Ocean shop session. Same sign-in as the native client: Ocean issues a challenge,
+/// the Minecraft session service confirms the join and Ocean returns its own token.
+/// The token stays in this process; the webview never sees it.
+struct OceanSession {
+    token: String,
+    expires: Instant,
+}
+fn ocean_sessions() -> &'static Mutex<HashMap<String, OceanSession>> {
+    static S: OnceLock<Mutex<HashMap<String, OceanSession>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn ocean_cached(account_id: &str) -> Option<String> {
+    let mut sessions = ocean_sessions().lock().unwrap_or_else(|e| e.into_inner());
+    sessions.retain(|_, s| s.expires > Instant::now());
+    sessions.get(account_id).map(|s| s.token.clone())
+}
+fn hex(s: &str, len: usize) -> bool {
+    s.len() == len && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+fn valid_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+async fn ocean_token(account_id: &str) -> Result<String, String> {
+    if let Some(token) = ocean_cached(account_id) {
+        return Ok(token);
+    }
+    // One sign-in at a time: Ocean allows only a few open challenges per name.
+    static LOGIN: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    let _guard = LOGIN.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
+    if let Some(token) = ocean_cached(account_id) {
+        return Ok(token);
+    }
+    let (profile, minecraft_token) = profile(account_id).await?;
+    let name = profile["name"].as_str().unwrap_or_default().to_string();
+    let uuid = profile["id"].as_str().unwrap_or_default().to_string();
+    let start = request(
+        reqwest::Method::POST,
+        "/api/social/auth/start",
+        Some(json!({"name":name})),
+        None,
+    )
+    .await?;
+    let server_id = start["server_id"]
+        .as_str()
+        .filter(|s| hex(s, 32))
+        .ok_or("turtle_response_invalid")?
+        .to_string();
+    let joined = engine::client()
+        .post("https://sessionserver.mojang.com/session/minecraft/join")
+        .json(&json!({"accessToken":minecraft_token,"selectedProfile":uuid,"serverId":server_id}))
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|_| "turtle_service_unavailable")?;
+    if !joined.status().is_success() {
+        return Err("turtle_shop_session_denied".into());
+    }
+    let finish = request(
+        reqwest::Method::POST,
+        "/api/social/auth/finish",
+        Some(json!({"name":name,"server_id":server_id})),
+        None,
+    )
+    .await
+    .map_err(|e| if e == "turtle_http_401" { "turtle_shop_session_denied".into() } else { e })?;
+    let token = finish["token"]
+        .as_str()
+        .filter(|t| hex(t, 64))
+        .ok_or("turtle_response_invalid")?
+        .to_string();
+    ocean_sessions().lock().unwrap_or_else(|e| e.into_inner()).insert(
+        account_id.to_string(),
+        OceanSession {
+            token: token.clone(),
+            // Ocean keeps sessions for six hours; renew a little earlier.
+            expires: Instant::now() + Duration::from_secs(5 * 3600 + 1800),
+        },
+    );
+    Ok(token)
+}
+async fn ocean(
+    account_id: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<Value>,
+) -> Result<Value, String> {
+    let mut retried = false;
+    loop {
+        let token = ocean_token(account_id).await?;
+        let result = request(method.clone(), path, body.clone(), Some(&token)).await;
+        if result.as_ref().err().is_some_and(|e| e == "turtle_http_401") {
+            ocean_sessions()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(account_id);
+            if !retried {
+                retried = true;
+                continue;
+            }
+        }
+        return result;
+    }
+}
+/// Rebuilds a purchasable product from untrusted webview input.
+fn shop_product(value: Option<Value>) -> Result<Value, String> {
+    let value = value.ok_or("turtle_action_invalid")?;
+    let field = |key: &str| value[key].as_str().unwrap_or_default().to_string();
+    let (kind, id, hash, owner) = (field("kind"), field("id"), field("hash"), field("owner"));
+    let id_ok = !id.is_empty()
+        && id.len() <= 96
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !matches!(
+        kind.as_str(),
+        "model" | "cape" | "aura" | "trail" | "emote" | "pet" | "promo_bundle"
+    ) || !id_ok
+        || !(hash.is_empty() || hex(&hash, 64))
+        || !(owner.is_empty() || owner == "turtle" || valid_uuid(&owner))
+    {
+        return Err("turtle_action_invalid".into());
+    }
+    Ok(json!({"kind":kind,"id":id,"hash":hash,"owner":owner}))
+}
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn turtle_shop(
+    account_id: String,
+    action: String,
+    product: Option<Value>,
+    peer: Option<String>,
+    id: Option<String>,
+    name: Option<String>,
+    accept: Option<bool>,
+    agreed: Option<u32>,
+) -> Result<Value, String> {
+    if engine::mc_token(&account_id).is_none() {
+        return Err("turtle_login_required".into());
+    }
+    let peer = peer.unwrap_or_default();
+    let id = id.unwrap_or_default();
+    let needs_peer = matches!(action.as_str(), "quote" | "gift");
+    let needs_id = matches!(action.as_str(), "gift" | "answer");
+    if (needs_peer && !valid_uuid(&peer)) || (needs_id && !valid_uuid(&id)) {
+        return Err("turtle_action_invalid".into());
+    }
+    use reqwest::Method;
+    match action.as_str() {
+        "inventory" => ocean(&account_id, Method::GET, "/api/social/shop/inventory", None).await,
+        "buy" => {
+            let product = shop_product(product)?;
+            ocean(&account_id, Method::POST, "/api/social/shop/buy", Some(product)).await
+        }
+        "daily" => {
+            ocean(
+                &account_id,
+                Method::POST,
+                "/api/social/shop/buy",
+                Some(json!({"kind":"daily_reward","id":"daily_reward","hash":"","owner":""})),
+            )
+            .await
+        }
+        "quote" => {
+            let product = shop_product(product)?;
+            ocean(
+                &account_id,
+                Method::POST,
+                "/api/social/exchange/quote",
+                Some(json!({"peer":peer,"product":product})),
+            )
+            .await
+        }
+        "gift" => {
+            let product = shop_product(product)?;
+            let label = name.unwrap_or_default();
+            if label.is_empty()
+                || label.trim() != label
+                || label.chars().count() > 48
+                || label.chars().any(char::is_control)
+            {
+                return Err("turtle_action_invalid".into());
+            }
+            let agreed = agreed.ok_or("turtle_action_invalid")?;
+            ocean(
+                &account_id,
+                Method::POST,
+                "/api/social/exchange",
+                Some(json!({"peer":peer,"nonce":id,"offer":{"kind":"gift","name":label,"product":product},"agreed":agreed})),
+            )
+            .await
+        }
+        "gifts" => {
+            let all = ocean(&account_id, Method::GET, "/api/social/exchange", None).await?;
+            // Workshop deliveries share this route; the shop only shows gifts.
+            let gifts: Vec<Value> = all["inbox"]
+                .as_array()
+                .map(|rows| rows.iter().filter(|r| r["kind"] == "gift").cloned().collect())
+                .unwrap_or_default();
+            Ok(json!({"me":all["me"],"gifts":gifts}))
+        }
+        "answer" => {
+            ocean(
+                &account_id,
+                Method::POST,
+                &format!("/api/social/exchange/{id}"),
+                Some(json!({"accept":accept.unwrap_or(false)})),
+            )
+            .await
+        }
+        _ => Err("turtle_action_invalid".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,5 +793,25 @@ mod tests {
             "the native executable never received the account session"
         );
         assert_eq!(duplicate, Err("turtle_already_running".into()));
+    }
+    #[test]
+    fn shop_products_are_rebuilt_from_known_fields_only() {
+        let hash = "a".repeat(64);
+        let clean = shop_product(Some(json!({"kind":"model","id":"angel_halo","hash":hash,"owner":"turtle","extra":"dropped"}))).unwrap();
+        assert_eq!(clean, json!({"kind":"model","id":"angel_halo","hash":hash,"owner":"turtle"}));
+        let bundle = shop_product(Some(json!({"kind":"promo_bundle","id":"angel_bundle"}))).unwrap();
+        assert_eq!(bundle["hash"], "");
+        for bad in [
+            json!({"kind":"test_shells","id":"x","hash":"","owner":""}),
+            json!({"kind":"daily_reward","id":"daily_reward","hash":"","owner":""}),
+            json!({"kind":"model","id":"../x","hash":"","owner":""}),
+            json!({"kind":"model","id":"x","hash":"zz","owner":""}),
+            json!({"kind":"cape","id":"x","hash":hash,"owner":"not-a-uuid"}),
+        ] {
+            assert_eq!(shop_product(Some(bad)), Err("turtle_action_invalid".into()));
+        }
+        assert!(valid_uuid("00000000-0000-0000-0000-000000000001"));
+        assert!(!valid_uuid("000000000000000000000000000000001"));
+        assert!(!valid_uuid("00000000-0000-0000-0000-00000000000g"));
     }
 }

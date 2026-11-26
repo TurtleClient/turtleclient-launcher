@@ -80,7 +80,32 @@ character. Existing wardrobe tabs and type chips remain; only its duplicate Shop
 tab is removed. The separate shop remains available.
 
 See [wardrobe.md](wardrobe.md) for server categories, item types, prices and
-entitlements. Prices describe catalog entries; no payment checkout is implemented.
-The existing Ocean beta write routes remain public. Those legacy routes must be
-secured before selling paid cosmetics; the new launcher API alone does not protect
-them.
+entitlements. The existing Ocean beta write routes remain public. Those legacy
+routes must be secured before selling paid cosmetics; the new launcher API alone
+does not protect them.
+
+### Shells shop
+
+The shop screen uses Ocean's own Shells shop, the same one the native client and
+the website use. The launcher signs in exactly like the native client: Ocean's
+`POST /api/social/auth/start` issues a challenge, the launcher confirms it through
+the Minecraft session service (`session/minecraft/join`) with the active Microsoft
+account, and `POST /api/social/auth/finish` returns Ocean's six-hour token. That
+token stays in the launcher's Rust process; the webview never sees it. The
+Minecraft token is sent only to Mojang, not to Ocean.
+
+| Launcher action | Ocean route | Notes |
+| --- | --- | --- |
+| Balance, owned items, prices | `GET /api/social/shop/inventory` | `balance` is the Shells wallet |
+| Buy one product | `POST /api/social/shop/buy` | `{kind,id,hash,owner}`; bundles as `promo_bundle` |
+| Daily reward | `POST /api/social/shop/buy` | `kind: daily_reward` |
+| Gift price | `POST /api/social/exchange/quote` | friends only |
+| Send gift | `POST /api/social/exchange` | `offer.kind: gift`, confirmed `agreed` price |
+| Open gifts, accept, decline, withdraw | `GET /api/social/exchange`, `POST /api/social/exchange/<id>` | a declined or withdrawn gift refunds the sender |
+
+Ocean decides every price and charges the wallet; the launcher only shows its
+answers. The cart is kept per account in local storage without prices and is
+checked out item by item, because Ocean charges per product. Gifts use the price
+the player confirmed; Ocean refuses a changed price (HTTP 409) instead of charging
+more. Not enough Shells is HTTP 402. Bundles and trails cannot be gifted. Buying
+Shells with money is not part of the launcher.

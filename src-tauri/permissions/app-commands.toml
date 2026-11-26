@@ -15,6 +15,7 @@ permissions = [
   "allow-turtle-cape",
   "allow-turtle-friends-connect",
   "allow-turtle-friends",
+  "allow-turtle-shop",
   "allow-core-version",
   "allow-app-version",
   "allow-remember-install-id",
