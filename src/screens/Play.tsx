@@ -51,6 +51,8 @@ import '../styles/pixel/play.css'
 import '../styles/pixel/lobby.css'
 import '../styles/pixel/retention.css'
 import '../styles/pixel/party.css'
+// TurtleClient Home: friends, chat, and the settings corner the lobby bar draws (lazy with Home).
+import '../styles/pixel/turtle-home.css'
 import { TIERS_SECTION_PUBLIC } from '../lib/tiersSection'
 import { liveInterval } from '../lib/liveInterval'
 import { clientUpdateLabel, useTurtleRuntime } from '../lib/useTurtleRuntime'
@@ -58,6 +60,7 @@ import { openSettings } from '../state/ui'
 import { BRAND } from '../lib/branding'
 import { useAccounts } from '../state/accounts'
 import { refreshTurtlePlaytime, useTurtlePlaytime } from '../state/turtlePlaytime'
+import { TurtleHomeFriends } from '../components/lobby/TurtleHomeFriends'
 
 /* Разделы на лобби, как в Brawl Stars: у каждого ровно один вход (владелец
    23.09.2026: «всё дублируется»). Режимы и каталог открывает плашка «Что
@@ -269,7 +272,7 @@ export function Play({ on }: { on: boolean }) {
     ) : null
 
   return (
-    <section className={'screen lobby' + (social ? ' lobby-social' : '') + (on ? ' on' : '')} id="s-play">
+    <section className={'screen lobby' + (social ? ' lobby-social' : '') + (BRAND.services ? '' : ' lobby-turtle') + (on ? ' on' : '')} id="s-play">
       <div className="hero-live-wrap lobby-wrap">
       <div
         className="hero-live"
@@ -287,6 +290,8 @@ export function Play({ on }: { on: boolean }) {
       <EmoteBubble />
       {/* Баннер справа виден всем, и новичкам тоже: реклама на самом видном месте (владелец 11.10.2026). */}
       {social ? <PartyPanel on={on} mode={mode} modeTitle={modeTitle} /> : <Recommend on={on} />}
+      {/* TurtleClient: friends at the top right, under the player (owner, 26.11.2026). */}
+      {!BRAND.services && !social ? <TurtleHomeFriends /> : null}
       {/* Левый край — как в Brawl Stars: крупный сундук и под ним разделы.
           Боковой полосы на главной нет (владелец 23.09.2026). */}
       {/* Ежедневный бонус живёт в магазине (правка владельца 21:43): плитки
@@ -359,7 +364,27 @@ export function Play({ on }: { on: boolean }) {
           {/* Кнопка запуска стоит на постоянном месте и видна на первом кадре:
               наведение её не вызывает и не прячет (антипаттерн Modrinth). */}
           <div className="play-col">
-          {btn.kind === 'stop' ? (
+          {nativeSelected && native.running && !nativeUpdating ? (
+            /* TurtleClient running: a red Stop client with the playtime under it (owner, 26.11.2026). */
+            <button
+              className="btn lg stop"
+              id="playBtn"
+              data-track="stop_turtle"
+              disabled={native.stopping}
+              onClick={() => void native.stop()}
+            >
+              <span className="lbl">
+                <Icon id="i-power" />
+                <span id="playLbl">
+                  {native.stopping ? t('Turtle: stopping client…') : t('Turtle: stop client')}
+                  <span className="play-hours">
+                    <Icon id="i-clock" />
+                    <b>{playHoursLabel(playedSeconds)}</b>
+                  </span>
+                </span>
+              </span>
+            </button>
+          ) : btn.kind === 'stop' ? (
             <button
               className="btn lg stop"
               id="playBtn"

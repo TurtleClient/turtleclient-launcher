@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import type { SkinViewEngine } from '../vendor/mine3d'
 import { useAccounts } from '../state/accounts'
 import { useTurtleWardrobe } from '../state/turtleWardrobe'
+import { useTurtleShop } from '../state/turtleShop'
 import { buildTurtleCosmetic } from './turtleGeometry'
 import { turtle } from './turtleclient'
 import { loadImg } from './skinArms'
@@ -46,13 +47,17 @@ export function useTurtleCharacter(viewer:RefObject<SkinViewEngine | null>,ready
     }).then(()=>{if(alive)notify.current?.()})
     return ()=>{alive=false;engine.clearCosmetics();built.forEach(model=>model.dispose());effects.forEach(effect=>effect.dispose())}
   },[ready,active,mine,wardrobe.models,effectKey,viewer])
+  // The cape Ocean serves for the player: a bought cape, or the team cape (a GIF) when worn.
+  const teamCape=useTurtleShop(s=>s.accountId===active && !!s.inventory?.team_cape_equipped)
+  const accountUuid=useAccounts(s=>s.list.find(a=>a.id===s.active)?.uuid||'')
   useEffect(()=>{
     const engine=viewer.current
     if(!engine || !ready)return
-    if(!wardrobe.snapshot || wardrobe.accountId!==active){engine.clearCape();return}
+    const own=!!wardrobe.snapshot && wardrobe.accountId===active
+    const uuid=own?wardrobe.snapshot!.player.uuid:wardrobe.oceanAccount===active?accountUuid:''
+    if(!uuid || !((own && wardrobe.snapshot!.cape) || teamCape)){engine.clearCape();return}
     let alive=true
-    if(wardrobe.snapshot.cape)void turtle<string|null>('turtle_cape',{uuid:wardrobe.snapshot.player.uuid}).then(src=>src?loadImg(src):null).then(image=>{if(alive)return engine.setCape(image)}).then(()=>{if(alive)notify.current?.()}).catch(()=>{})
-    else if(alive)engine.clearCape()
+    void turtle<string|null>('turtle_cape',{uuid}).then(src=>src?loadImg(src):null).then(image=>{if(alive)return image?engine.setCape(image):engine.clearCape()}).then(()=>{if(alive)notify.current?.()}).catch(()=>{})
     return()=>{alive=false}
-  },[ready,active,wardrobe.accountId,wardrobe.snapshot?.cape,wardrobe.snapshot?.cape_revision,viewer])
+  },[ready,active,wardrobe.accountId,wardrobe.oceanAccount,wardrobe.snapshot?.cape,wardrobe.snapshot?.cape_revision,teamCape,accountUuid,viewer])
 }

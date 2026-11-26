@@ -108,9 +108,22 @@ async fn beat(State(state): State<Playtime>, headers: HeaderMap, Json(body): Jso
     let seconds = clock.beat(me, body.playing, Instant::now())?;
     Ok(Json(json!({"seconds":seconds,"playing":body.playing})))
 }
+/// Which of the player's friends are playing TurtleClient right now (their launcher beats).
+async fn friends(State(state): State<Playtime>, headers: HeaderMap) -> Result<Json<Value>, StatusCode> {
+    let friends = {
+        let mut auth = lock(&state.auth)?;
+        let me = authenticated(&mut auth, &headers)?;
+        auth.database.users.get(&me).map(|u| u.friends.clone()).unwrap_or_default()
+    };
+    let clock = state.clock.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let now = Instant::now();
+    let playing: Vec<Uuid> = friends.into_iter().filter(|f| clock.playing(*f, now)).collect();
+    Ok(Json(json!({"playing":playing})))
+}
 pub(crate) fn router(auth: Shared, clock: Clock) -> Router {
     Router::new()
         .route("/playtime", get(show).post(beat))
+        .route("/playtime/friends", get(friends))
         .layer(DefaultBodyLimit::max(1024))
         .with_state(Playtime { auth, clock: Arc::new(Mutex::new(clock)) })
 }

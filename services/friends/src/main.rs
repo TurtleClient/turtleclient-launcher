@@ -443,6 +443,12 @@ mod tests {
         assert_eq!(bob["notes"][0]["item"]["id"], "demon_aura");
         let carol: serde_json::Value = client.get(format!("{base}/gift-notes")).bearer_auth("carol-session").send().await.unwrap().json().await.unwrap();
         assert_eq!(carol["notes"], serde_json::json!([]));
+        // Playing now: friends see it, others do not.
+        assert_eq!(client.post(format!("{base}/playtime")).bearer_auth("alice-session").json(&serde_json::json!({"playing":true})).send().await.unwrap().status(), StatusCode::OK);
+        let bob: serde_json::Value = client.get(format!("{base}/playtime/friends")).bearer_auth("bob-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(bob["playing"], serde_json::json!([a]));
+        let carol: serde_json::Value = client.get(format!("{base}/playtime/friends")).bearer_auth("carol-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(carol["playing"], serde_json::json!([]));
         assert_eq!(
             client
                 .delete(format!("{base}/friends/{b}"))

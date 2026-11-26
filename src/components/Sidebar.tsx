@@ -23,6 +23,7 @@ import { onRealtime } from '../lib/realtime'
 import { preloadScreen } from '../screens/registry'
 import { useDaily } from '../state/daily'
 import { useT } from '../i18n'
+import { BRAND } from '../lib/branding'
 
 // Окно отзыва открывают редко: его код — отдельный чанк.
 const FeedbackModal = lazy(() => import('./Feedback').then((m) => ({ default: m.FeedbackModal })))
@@ -107,6 +108,35 @@ export function Sidebar({ onNav }: { onNav: (s: ScreenId) => void }) {
     const online = onlineList.length
     const unread = (millida ? unreadTotal(friends) + roomsUnreadTotal(rooms) : 0)
     const badge = (n: number) => (n ? <span className="lb-badge">{n > 99 ? '99+' : n}</span> : null)
+    // Bug report and settings: in the top-right row, or for TurtleClient in the bottom-left corner.
+    const corner = (
+      <>
+        {/* Отзыв и баги — зелёный «жучок» между чатом и настройками (16:41). */}
+        <button
+          className={'lb-btn lb-fb' + (fbReward ? ' has-gift' : '')}
+          data-sound="open"
+          data-track="nav_feedback"
+          aria-label={t('Отзыв о лаунчере')}
+          onClick={() => setFbOpen(true)}
+        >
+          <BugPx size={26} light />
+          {fbReward ? <span className="lb-fb-gift">+{FEEDBACK_SHARDS}</span> : null}
+        </button>
+        <span className="lb-vol lb-quick">
+          <button
+            className="lb-btn"
+            aria-label={t('Настройки')}
+            data-notip
+            data-track="nav_settings"
+            data-screen="settings"
+            onMouseEnter={() => preloadScreen('settings')}
+            onClick={() => onNav('settings')}
+          >
+            <Icon id="i-settings" />
+          </button>
+        </span>
+      </>
+    )
     return (
       /* Лобби (правка владельца 23.09.2026, 21:00): справа вверху — отдельные
          кнопки, как в Brawl Stars. С 12.10.2026 их четыре: друзья (в сети,
@@ -118,7 +148,8 @@ export function Sidebar({ onNav }: { onNav: (s: ScreenId) => void }) {
           {/* Друзья — первыми, аккаунт за ними: друзей смотрят постоянно,
               аккаунт меняют редко (владелец 24.09.2026, 07:47). Лица тех, кто в сети, внахлёст (как пати в Fortnite):
               живые головы вместо контурной иконки. Никого — серые Стив и Алекс. */}
-          <span className="lb-badge-wrap">
+          {/* TurtleClient: friends live in the Home panel below the player (owner, 26.11.2026). */}
+          {BRAND.services ? <span className="lb-badge-wrap">
             <button
               className="lb-btn lb-friends"
               data-sound="nav"
@@ -138,7 +169,7 @@ export function Sidebar({ onNav }: { onNav: (s: ScreenId) => void }) {
               </span>
             </button>
             {badge(reqIn.length + unread)}
-          </span>
+          </span> : null}
           <div
             className="lb-btn lb-acc account"
             role="button"
@@ -162,7 +193,8 @@ export function Sidebar({ onNav }: { onNav: (s: ScreenId) => void }) {
                 <span className="acc-nick">{inGameNick || t('Гость')}</span>
                 <NickStreak />
               </span>
-              {plusActive ? (
+              {/* TurtleClient: only the name next to the head, no account kind (owner, 26.11.2026). */}
+              {!BRAND.services ? (acc ? null : <i>{t('Войти')}</i>) : plusActive ? (
                 <PlusMark tier={plusTier === 'DIAMOND' ? 'DIAMOND' : 'PLUS'} height={14} className="lb-pmark-badge" />
               ) : (
                 <i>{acc ? accKindLabel(acc.kind) : t('Войти')}</i>
@@ -170,38 +202,17 @@ export function Sidebar({ onNav }: { onNav: (s: ScreenId) => void }) {
             </span>
             <Icon id="i-chev-d" />
           </div>
-          {/* Отзыв и баги — зелёный «жучок» между чатом и настройками (16:41). */}
-          <button
-            className={'lb-btn lb-fb' + (fbReward ? ' has-gift' : '')}
-            data-sound="open"
-            data-track="nav_feedback"
-            aria-label={t('Отзыв о лаунчере')}
-            onClick={() => setFbOpen(true)}
-          >
-            <BugPx size={26} light />
-            {fbReward ? <span className="lb-fb-gift">+{FEEDBACK_SHARDS}</span> : null}
-          </button>
-          {fbOpen ? (
-            <Suspense fallback={null}>
-              <FeedbackModal onClose={() => setFbOpen(false)} />
-            </Suspense>
-          ) : null}
-          <span className="lb-vol lb-quick">
-            <button
-              className="lb-btn"
-              aria-label={t('Настройки')}
-              data-notip
-              data-track="nav_settings"
-              data-screen="settings"
-              onMouseEnter={() => preloadScreen('settings')}
-              onClick={() => onNav('settings')}
-            >
-              <Icon id="i-settings" />
-            </button>
-          </span>
+          {BRAND.services ? corner : null}
         </div>
         <AccountMenu open={menuOpen} onClose={() => setMenuOpen(false)} chipRef={chipRef} />
       </header>
+      {/* TurtleClient: settings and bug report in the bottom-left corner (owner, 26.11.2026). */}
+      {!BRAND.services ? <div className="lb-corner">{corner}</div> : null}
+      {fbOpen ? (
+        <Suspense fallback={null}>
+          <FeedbackModal onClose={() => setFbOpen(false)} />
+        </Suspense>
+      ) : null}
       </>
     )
   }

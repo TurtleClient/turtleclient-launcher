@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { create } from 'zustand'
 import { useT } from '../../i18n'
 import { categoryOf, lineOf } from '../../lib/turtleShop'
 import type { CartLine, TurtleCategory } from '../../lib/turtleShop'
@@ -10,7 +11,12 @@ import { setScreen } from '../../state/ui'
 import { Icon } from '../Icon'
 import { TurtlePreview } from '../shop/turtle/TurtlePreview'
 import { ItemGrid, ItemTile } from './ItemTile'
+import type { PreviewItem } from '../../lib/turtlePreview'
 import '../../styles/pixel/turtle-wardrobe.css'
+
+/** The emote under the pointer, played by the big figure with what the player wears (owner, 26.11.2026). */
+export const useEmoteHover = create<{ items: PreviewItem[] | null; key: string }>(() => ({ items: null, key: '' }))
+const previewOf = (line: CartLine): PreviewItem => ({ kind: line.kind === 'team_cape' ? 'cape' : line.kind, id: line.id, hash: line.hash, slot: line.slot, owner: line.owner })
 
 const dashed = (id: string) => (/^[0-9a-f]{32}$/i.test(id) ? id.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5') : id).toLowerCase()
 
@@ -30,6 +36,7 @@ export function TurtleWardrobe({ category }: { category: string }) {
     if (category === 'emote' || category === 'all') void loadEmoteWheel()
   }, [category])
   useEffect(() => setNotice(''), [category])
+  useEffect(() => () => useEmoteHover.setState({ items: null, key: '' }), [category])
 
   if (!accountId) return <p className="faint-note">{t('Turtle: sign in with a Microsoft Minecraft account.')}</p>
   if (!inventory)
@@ -72,6 +79,9 @@ export function TurtleWardrobe({ category }: { category: string }) {
   }
 
   const emotes = category === 'emote' || category === 'all' ? inventory.items.map(lineOf).filter(line => line.kind === 'emote') : []
+  // What the figure wears while an emote plays: models, capes, aura and trail, as on Home.
+  const wearing = inventory.items.map(lineOf).filter(line => !['emote', 'pet', 'name_tag'].includes(line.kind) && line.slot !== 'name_tag' && worn(line)).map(previewOf)
+  const hover = (line: CartLine | null) => useEmoteHover.setState(line ? { items: [...wearing, previewOf(line)], key: line.key } : { items: null, key: '' })
   const nameOf = (id: string) => emotes.find(line => line.id === id)?.name || id
 
   return (
@@ -106,14 +116,23 @@ export function TurtleWardrobe({ category }: { category: string }) {
           {owned.map(line => {
             const on = worn(line)
             const text = status(line, on)
-            const preview = line.kind === 'team_cape' ? [] : [{ kind: line.kind, id: line.id, hash: line.hash, slot: line.slot, owner: line.owner }]
+            // Team capes are GIFs in Ocean's asset store, shown like any cape.
+            const preview = [previewOf(line)]
+            const emote = line.kind === 'emote'
             return (
-              <ItemTile
+              <div
                 key={line.key}
+                className="tw-tile"
+                onMouseEnter={emote ? () => hover(line) : undefined}
+                onMouseLeave={emote ? () => hover(null) : undefined}
+                onFocus={emote ? () => hover(line) : undefined}
+                onBlur={emote ? () => hover(null) : undefined}
+              >
+              <ItemTile
                 name={line.name}
                 itemId={line.id}
                 rarity={line.rarity}
-                art={preview.length ? <TurtlePreview items={preview} /> : <Icon id="i-cape" className="icon tw-art-ic" />}
+                art={<TurtlePreview items={preview} />}
                 on={on}
                 status={<span className="ch-tile-note" title={text}>{text}</span>}
                 loading={busy === 'wear:' + line.hash || (busy === 'pet' && line.kind === 'pet') || (wheel.busy && line.kind === 'emote') || (line.kind === 'cape' && wardrobe.busy === 'cape')}
@@ -121,6 +140,7 @@ export function TurtleWardrobe({ category }: { category: string }) {
                   if (!busy) void toggle(line)
                 }}
               />
+              </div>
             )
           })}
         </ItemGrid>

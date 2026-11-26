@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { launchTurtleClient } from './turtleLaunch'
+import { launchTurtleClient, stopTurtleClient } from './turtleLaunch'
 import { turtle } from './turtleclient'
 import type { TurtleStatus, TurtleUpdateStatus } from './turtleclient'
 import { t } from '../i18n'
@@ -13,7 +13,9 @@ export function clientUpdateLabel(update?:TurtleUpdateStatus) {
 export function useTurtleRuntime(enabled: boolean) {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [clientUpdate,setClientUpdate]=useState<TurtleUpdateStatus | undefined>()
+  const [poll, setPoll] = useState(0)
   useEffect(() => {
     if (!enabled) return
     let live = true
@@ -21,6 +23,13 @@ export function useTurtleRuntime(enabled: boolean) {
     void update()
     const timer = setInterval(() => void update(), 3000)
     return () => {live = false; clearInterval(timer)}
-  }, [enabled])
-  return { running, busy:busy || ['checking','downloading','installing','preparing_resources'].includes(clientUpdate?.phase || ''),clientUpdate, launch: async () => {setBusy(true); try {await launchTurtleClient()} finally {setBusy(false)}} }
+  }, [enabled, poll])
+  return {
+    running,
+    stopping,
+    busy:busy || ['checking','downloading','installing','preparing_resources'].includes(clientUpdate?.phase || ''),
+    clientUpdate,
+    launch: async () => {setBusy(true); try {await launchTurtleClient()} finally {setBusy(false); setPoll(n => n + 1)}},
+    stop: async () => {setStopping(true); try {await stopTurtleClient()} finally {setStopping(false); setRunning(false); setPoll(n => n + 1)}},
+  }
 }

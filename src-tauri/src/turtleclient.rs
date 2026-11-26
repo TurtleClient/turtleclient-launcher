@@ -168,7 +168,10 @@ async fn profile(account: &str) -> Result<(Value, String), String> {
     Ok((profile, token))
 }
 #[tauri::command]
-pub async fn turtle_launch(account_id: Option<String>, nick: String) -> Result<(), String> {
+pub async fn turtle_launch(account_id: Option<String>, nick: String, join: Option<String>) -> Result<(), String> {
+    if join.as_deref().is_some_and(|code| !invite_code_valid(code)) {
+        return Err("turtle_action_invalid".into());
+    }
     update::before_launch().await?;
     let id = account_id.ok_or("turtle_login_required")?;
     let (p, t) = profile(&id).await?;
@@ -181,9 +184,141 @@ pub async fn turtle_launch(account_id: Option<String>, nick: String) -> Result<(
     {
         return Err("turtle_nickname_invalid".into());
     }
-    crate::commands::blocking(move || spawn(&config, &nick, identity)).await??;
+    crate::commands::blocking(move || spawn(&config, &nick, identity, join.as_deref())).await??;
     track_playtime(id);
     Ok(())
+}
+/// A friend's world invite code (horizon-friends): base32 groups joined by dashes.
+fn invite_code_valid(code: &str) -> bool {
+    !code.is_empty()
+        && code.len() <= 1024
+        && !code.starts_with('-')
+        && code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+/// Closes the native client like its window's close button, so the world is saved; a
+/// client that has not exited after 20 seconds is ended.
+#[tauri::command]
+pub async fn turtle_stop() -> Result<Value, String> {
+    let pid = {
+        let mut slot = runtime().lock().unwrap_or_else(|e| e.into_inner());
+        match slot.as_mut() {
+            Some(child) => match child.try_wait() {
+                Ok(None) => child.id(),
+                _ => return Ok(json!({"running":false})),
+            },
+            None => return Ok(json!({"running":false})),
+        }
+    };
+    let mut close = if cfg!(windows) { Command::new("taskkill") } else { Command::new("kill") };
+    if cfg!(windows) {
+        close.args(["/PID", &pid.to_string()]);
+    } else {
+        close.args(["-TERM", &pid.to_string()]);
+    }
+    close.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        close.creation_flags(0x08000000);
+    }
+    let _ = crate::commands::blocking(move || close.status().map(|_| ()).map_err(|e| e.to_string())).await;
+    for _ in 0..80 {
+        if !running() {
+            playtime_wake().notify_one();
+            return Ok(json!({"running":false}));
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    {
+        let mut slot = runtime().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(child) = slot.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        *slot = None;
+    }
+    playtime_wake().notify_one();
+    Ok(json!({"running":false}))
+}
+/// Wakes the playtime tracker early, so a stopped client ends its session at once.
+fn playtime_wake() -> &'static tokio::sync::Notify {
+    static WAKE: OnceLock<tokio::sync::Notify> = OnceLock::new();
+    WAKE.get_or_init(tokio::sync::Notify::new)
+}
+/// Chat text as Ocean accepts it: 1 to 1000 characters, no control characters but line breaks.
+fn chat_text(text: &str) -> Option<String> {
+    let text = text.trim();
+    (!text.is_empty()
+        && text.chars().count() <= 1000
+        && text.len() <= 4000
+        && !text.chars().any(|c| c.is_control() && c != '\n'))
+    .then(|| text.to_string())
+}
+/// Friends chat and world invites through Ocean, exactly as the native client uses them.
+/// The webview passes only ids it got from Ocean; every path is rebuilt from checked parts.
+#[tauri::command]
+pub async fn turtle_social(
+    account_id: String,
+    action: String,
+    peer: Option<String>,
+    text: Option<String>,
+    nonce: Option<String>,
+    id: Option<String>,
+) -> Result<Value, String> {
+    use reqwest::Method;
+    if engine::mc_token(&account_id).is_none() {
+        return Err("turtle_login_required".into());
+    }
+    let peer = || peer.clone().filter(|p| valid_uuid(p)).ok_or_else(|| "turtle_action_invalid".to_string());
+    match action.as_str() {
+        "sync" => ocean(&account_id, Method::GET, "/api/social/sync", None).await,
+        "thread" => ocean(&account_id, Method::GET, &format!("/api/social/thread/{}", peer()?), None).await,
+        "send" => {
+            let text = text.as_deref().and_then(chat_text).ok_or("turtle_action_invalid")?;
+            let nonce = nonce.filter(|n| valid_uuid(n)).ok_or("turtle_action_invalid")?;
+            ocean(&account_id, Method::POST, &format!("/api/social/thread/{}", peer()?), Some(json!({"text":text,"nonce":nonce}))).await
+        }
+        "read" => ocean(&account_id, Method::POST, "/api/social/action", Some(json!({"kind":"read","target":peer()?}))).await,
+        "image" => {
+            use base64::Engine as _;
+            let id = id.filter(|i| valid_uuid(i)).ok_or("turtle_action_invalid")?;
+            let mut retried = false;
+            loop {
+                let token = ocean_token(&account_id).await?;
+                let mut response = engine::client()
+                    .get(format!("{BASE}/api/social/image/{id}"))
+                    .bearer_auth(&token)
+                    .timeout(Duration::from_secs(20))
+                    .send()
+                    .await
+                    .map_err(|_| "turtle_service_unavailable")?;
+                if response.status() == reqwest::StatusCode::UNAUTHORIZED && !retried {
+                    ocean_sessions().lock().unwrap_or_else(|e| e.into_inner()).remove(&account_id);
+                    retried = true;
+                    continue;
+                }
+                if !response.status().is_success() {
+                    return Err(format!("turtle_http_{}", response.status().as_u16()));
+                }
+                let mut bytes = Vec::new();
+                while let Some(chunk) = response.chunk().await.map_err(|_| "turtle_service_unavailable")? {
+                    if bytes.len() + chunk.len() > 8 * 1024 * 1024 {
+                        return Err("turtle_response_invalid".into());
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                let kind = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                    "image/png"
+                } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+                    "image/gif"
+                } else {
+                    return Err("turtle_response_invalid".into());
+                };
+                return Ok(json!({"image":format!("data:{kind};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes))}));
+            }
+        }
+        _ => Err("turtle_action_invalid".into()),
+    }
 }
 
 /// A call to the Turtle service with the account's friends session (renewed once on 401).
@@ -254,7 +389,10 @@ fn track_playtime(account_id: String) {
     tauri::async_runtime::spawn(async move {
         let _ = playtime_request(&account_id, Some(true)).await;
         loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(60)) => {}
+                _ = playtime_wake().notified() => {}
+            }
             let playing = running();
             let _ = playtime_request(&account_id, Some(playing)).await;
             if !playing {
@@ -264,15 +402,18 @@ fn track_playtime(account_id: String) {
         *TRACKING.get_or_init(|| Mutex::new(false)).lock().unwrap_or_else(|e| e.into_inner()) = false;
     });
 }
-/// The player's TurtleClient playtime as the server keeps it.
+/// The player's TurtleClient playtime as the server keeps it, or which friends are playing now.
 #[tauri::command]
-pub async fn turtle_playtime(account_id: String) -> Result<Value, String> {
+pub async fn turtle_playtime(account_id: String, friends: Option<bool>) -> Result<Value, String> {
     if engine::mc_token(&account_id).is_none() {
         return Err("turtle_login_required".into());
     }
+    if friends == Some(true) {
+        return friends_call(&account_id, reqwest::Method::GET, "/social/playtime/friends", None).await;
+    }
     playtime_request(&account_id, None).await
 }
-fn spawn(config: &Settings, nick: &str, identity: Option<Value>) -> Result<(), String> {
+fn spawn(config: &Settings, nick: &str, identity: Option<Value>, join: Option<&str>) -> Result<(), String> {
     use std::io::Write;
     let mut slot = runtime().lock().unwrap_or_else(|e| e.into_inner());
     if slot
@@ -292,6 +433,10 @@ fn spawn(config: &Settings, nick: &str, identity: Option<Value>) -> Result<(), S
         "--game-dir",
         &config.game_dir,
     ]);
+    if let Some(code) = join {
+        // The client joins the friend's world at start (Launch API: --quickPlayMultiplayer).
+        command.args(["--quickPlayMultiplayer", &format!("friend:{code}")]);
+    }
     if identity.is_some() {
         command.arg("--session-stdin").stdin(Stdio::piped());
     } else {
@@ -1008,14 +1153,14 @@ mod tests {
         };
         validate(&config).unwrap();
         let session = json!({"name":"FixturePlayer","uuid":"00000000000000000000000000000001","access_token":"fixture-private-token","user_type":"msa"});
-        spawn(&config, "FixturePlayer", Some(session)).unwrap();
+        spawn(&config, "FixturePlayer", Some(session), None).unwrap();
         let marker = home.join("game/.turtleclient/fixture-ready");
         let deadline = Instant::now() + Duration::from_secs(10);
         while !marker.exists() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(20));
         }
         let received = marker.exists();
-        let duplicate = spawn(&config, "FixturePlayer", None);
+        let duplicate = spawn(&config, "FixturePlayer", None, None);
         // Always reap our fixture, even when an assertion will report a failure.
         {
             let mut slot = runtime().lock().unwrap();
@@ -1034,6 +1179,15 @@ mod tests {
     }
     #[test]
     fn shop_products_are_rebuilt_from_known_fields_only() {
+        assert!(invite_code_valid("K7QM3-XPD2A"));
+        for bad in ["", "-x", "a b", "a;b", "friend:K7QM"] {
+            assert!(!invite_code_valid(bad), "{bad}");
+        }
+        assert!(!invite_code_valid(&"A".repeat(1025)));
+        assert_eq!(chat_text("  hi\nthere ").as_deref(), Some("hi\nthere"));
+        assert!(chat_text("   ").is_none());
+        assert!(chat_text("a\u{7}b").is_none());
+        assert!(chat_text(&"x".repeat(1001)).is_none());
         let hash = "a".repeat(64);
         let clean = shop_product(Some(json!({"kind":"model","id":"angel_halo","hash":hash,"owner":"turtle","extra":"dropped"}))).unwrap();
         assert_eq!(clean, json!({"kind":"model","id":"angel_halo","hash":hash,"owner":"turtle"}));

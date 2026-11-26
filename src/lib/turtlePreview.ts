@@ -7,13 +7,13 @@
  * One WebGL renderer draws every visible preview in turn and copies the frame into
  * the preview's own canvas: a context per tile would exceed the browser's limit.
  */
-import { AmbientLight, BoxGeometry, CircleGeometry, DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshLambertMaterial, NearestFilter, OrthographicCamera, Scene, SRGBColorSpace, Sprite, SpriteMaterial, Texture, WebGLRenderer, CanvasTexture, DoubleSide } from 'three'
+import { AmbientLight, BoxGeometry, BufferGeometry, CircleGeometry, DirectionalLight, Float32BufferAttribute, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshLambertMaterial, NearestFilter, OrthographicCamera, Scene, SRGBColorSpace, Sprite, SpriteMaterial, Texture, WebGLRenderer, CanvasTexture, DoubleSide } from 'three'
 import type { Object3D } from 'three'
 import { buildTurtleCosmetic } from './turtleGeometry'
 import type { TurtleModel } from './turtleModelTypes'
 import { turtleTagColor } from './turtleTag'
-import { turtleAura, turtleTrail } from './turtleEffects'
-import type { TurtleEffect } from './turtleEffects'
+import { emoteEffect, hasEmoteEffect, turtleAura, turtleTrail } from './turtleEffects'
+import type { EmoteEffect, TurtleEffect } from './turtleEffects'
 import { turtle } from './turtleclient'
 
 export interface PreviewItem {
@@ -305,6 +305,9 @@ interface PreviewState {
   effects: TurtleEffect[]
   disposers: (() => void)[]
   capes: Group[]
+  gifs: GifCape[]
+  dj: Map<string, { group: Group; rest: number[] }> | null
+  emoteFx: EmoteEffect | null
   clip: TurtleClip | null
   custom: CustomEmote | null
   emote: string | null
@@ -320,6 +323,11 @@ interface PreviewState {
   output: CanvasRenderingContext2D | null
 }
 
+interface GifFrame { image: CanvasImageSource & { displayWidth?: number; displayHeight?: number; duration?: number | null; close?: () => void } }
+interface GifDecoder { tracks: { ready: Promise<void>; selectedTrack?: { frameCount: number } }; decode(o: { frameIndex: number }): Promise<GifFrame>; close(): void }
+interface GifCape { decoder: GifDecoder; paint: (image: GifFrame['image']) => void; map: Texture; index: number; next: number; busy: boolean }
+const gifBytes = (dataUrl: string) => Uint8Array.from(atob(dataUrl.slice(dataUrl.indexOf(',') + 1)), c => c.charCodeAt(0))
+
 async function addCape(actor: Avatar, item: PreviewItem, state: PreviewState) {
   const asset = await previewAsset(item.hash)
   if (!asset.image) throw new Error('cape')
@@ -330,12 +338,33 @@ async function addCape(actor: Avatar, item: PreviewItem, state: PreviewState) {
   const ctx = c.getContext('2d')
   if (!ctx) return
   ctx.imageSmoothingEnabled = false
-  if (image.width / image.height > 1.7) {
-    const sx = image.width / 64
-    const sy = image.height / 32
-    ctx.drawImage(image, sx, sy, sx * 10, sy * 16, 0, 0, 160, 256)
-  } else ctx.drawImage(image, 0, 0, 160, 256)
+  // A classic 64x32 cape sheet shows its front; anything else is drawn whole.
+  const classic = image.width / image.height > 1.7
+  const paint = (frame: GifFrame['image']) => {
+    const w = frame.displayWidth || (frame as HTMLImageElement).width
+    const h = frame.displayHeight || (frame as HTMLImageElement).height
+    ctx.clearRect(0, 0, 160, 256)
+    if (classic) {
+      const sx = w / 64
+      const sy = h / 32
+      ctx.drawImage(frame, sx, sy, sx * 10, sy * 16, 0, 0, 160, 256)
+    } else ctx.drawImage(frame, 0, 0, 160, 256)
+  }
+  paint(image)
   const map = texture(c)
+  const Decoder = (window as unknown as { ImageDecoder?: new (o: { data: Uint8Array; type: string }) => GifDecoder }).ImageDecoder
+  if (asset.image.startsWith('data:image/gif') && Decoder) {
+    try {
+      const decoder = new Decoder({ data: gifBytes(asset.image), type: 'image/gif' })
+      await decoder.tracks.ready
+      if ((decoder.tracks.selectedTrack?.frameCount ?? 1) > 1) {
+        state.gifs.push({ decoder, paint, map, index: 0, next: 0, busy: false })
+        state.disposers.push(() => decoder.close())
+      } else decoder.close()
+    } catch {
+      /* The first frame stays. */
+    }
+  }
   const geometry = new BoxGeometry(10, 16, 0.6)
   const material = new MeshLambertMaterial({ map, side: DoubleSide })
   const group = new Group()
@@ -367,6 +396,61 @@ async function addModel(actor: Avatar, item: PreviewItem, state: PreviewState) {
   }
 }
 
+/* ---------- The DJ booth (website dj-booth.json, the client's Turtle_DJ_Deck) ---------- */
+
+interface BakedFace { normal: number[]; vertices: number[][] }
+interface BakedPart { name: string; pose: number[]; faces: BakedFace[]; children: BakedPart[] }
+const modelVector = ([x, y, z]: number[]) => [x, -y, -z] as const
+function placePart(group: Group, p: number[]) {
+  const [x, y, z] = modelVector(p.slice(0, 3))
+  group.position.set(x, y, z)
+  const [rx, ry, rz] = modelVector(p.slice(3, 6))
+  group.rotation.set(rx, ry, rz, 'ZYX')
+  group.scale.set(p[6], p[7], p[8])
+}
+function bakedPart(p: BakedPart, material: MeshLambertMaterial, parts: Map<string, { group: Group; rest: number[] }>, geometries: BufferGeometry[]): Group {
+  const group = new Group()
+  group.name = p.name
+  placePart(group, p.pose)
+  parts.set(p.name, { group, rest: p.pose })
+  if (p.faces.length) {
+    const position: number[] = []
+    const normal: number[] = []
+    const uv: number[] = []
+    for (const f of p.faces) {
+      for (const i of [0, 1, 2, 0, 2, 3]) {
+        const v = f.vertices[i]
+        position.push(...modelVector(v))
+        normal.push(...modelVector(f.normal))
+        uv.push(v[3], 1 - v[4])
+      }
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new Float32BufferAttribute(position, 3))
+    geometry.setAttribute('normal', new Float32BufferAttribute(normal, 3))
+    geometry.setAttribute('uv', new Float32BufferAttribute(uv, 2))
+    geometries.push(geometry)
+    group.add(new Mesh(geometry, material))
+  }
+  for (const child of p.children) group.add(bakedPart(child, material, parts, geometries))
+  return group
+}
+async function addDjBooth(state: PreviewState) {
+  const data = (await previewClip('dj_booth')) as unknown as { root: BakedPart; texture: string }
+  if (!data?.root || !data.texture) return
+  const map = texture(await loadImage('data:image/png;base64,' + data.texture))
+  const material = new MeshLambertMaterial({ map, side: DoubleSide, alphaTest: 0.05 })
+  const parts = new Map<string, { group: Group; rest: number[] }>()
+  const geometries: BufferGeometry[] = []
+  state.scene.add(bakedPart(data.root, material, parts, geometries))
+  state.dj = parts
+  state.disposers.push(() => {
+    geometries.forEach(g => g.dispose())
+    material.dispose()
+    map.dispose()
+  })
+}
+
 function frame(state: PreviewState, t: number, aspect: number) {
   const id = state.emote
   let focus = state.trails ? 9 : 16
@@ -375,7 +459,7 @@ function frame(state: PreviewState, t: number, aspect: number) {
   if (id === 'angel_ascension' || id === 'levitate') focus = 24
   const lift = id === 'angel_ascension' || id === 'levitate' ? 62 : 44
   const wide = id === 'wide' ? 56 / aspect : 0
-  const span = state.trails ? 74 : state.actors.length > 1 ? Math.max(44, 65 / aspect) : Math.max(lift, wide)
+  const span = state.dj ? Math.max(52, 60 / aspect) : state.trails ? 74 : state.actors.length > 1 ? Math.max(44, 65 / aspect) : Math.max(lift, wide)
   const cam = state.camera
   cam.left = (-span * aspect) / 2
   cam.right = (span * aspect) / 2
@@ -399,6 +483,14 @@ function frame(state: PreviewState, t: number, aspect: number) {
       a.group.position.fromArray(from.feet)
       a.group.rotation.y = (-from.yaw * Math.PI) / 180
     })
+    // The emote's own effect at the feet, on the emote's clock (the client's cinematic_geometry).
+    const lead = c.frames[f]?.[0]
+    if (state.emoteFx && lead) {
+      const yaw = (-lead.yaw * Math.PI) / 180
+      const root = lead.pose.p?.[6]
+      state.emoteFx.object.position.set(lead.feet[0] || 0, lead.feet[1] || 0, lead.feet[2] || 0)
+      state.emoteFx.pose(time, root ? -(root[1] || 0) / 16 : 0, Math.cos(yaw), -Math.sin(yaw))
+    }
   } else if (state.custom) {
     const animation = Object.values(state.custom.animations || {})[0]
     const pose = customPose(state.custom, t % Math.max(0.1, animation?.animation_length || 1))
@@ -413,6 +505,35 @@ function frame(state: PreviewState, t: number, aspect: number) {
   for (const cape of state.capes) {
     cape.rotation.x = -(0.13 + Math.sin(t * 2) * 0.045)
     cape.rotation.z = Math.sin(t * 1.2) * 0.025
+  }
+  for (const gif of state.gifs) {
+    if (gif.busy || t < gif.next) continue
+    gif.busy = true
+    const count = gif.decoder.tracks.selectedTrack?.frameCount || 1
+    gif.decoder.decode({ frameIndex: gif.index }).then(({ image }) => {
+      gif.paint(image)
+      gif.map.needsUpdate = true
+      gif.next = t + Math.max(0.02, (image.duration || 100_000) / 1_000_000)
+      image.close?.()
+      gif.index = (gif.index + 1) % count
+    }, () => {
+      gif.next = Infinity
+    }).finally(() => {
+      gif.busy = false
+    })
+  }
+  if (state.dj) {
+    // The deck plays along at 160 beats a minute, as on the website.
+    const beat = ((t % 16) * 160) / 60
+    for (const [name, part] of state.dj) {
+      const pose = [...part.rest]
+      if (name === 'platter_left') pose[4] += beat * 0.8
+      if (name === 'platter_right') pose[4] -= beat * 0.7
+      if (name === 'crossfader') pose[0] += 2.5 * Math.sin(beat * 0.35)
+      if (name.startsWith('eq_')) pose[4] += 0.5 * Math.sin(beat * 0.25)
+      if (name.startsWith('fader_')) pose[2] += Math.sin(beat * 0.18)
+      placePart(part.group, pose)
+    }
   }
   for (const effect of state.effects) effect.update(t)
   if (state.tag && state.tagCanvas && state.tagMap) {
@@ -536,6 +657,9 @@ class PreviewManager {
       effects: [],
       disposers: [],
       capes: [],
+      gifs: [],
+      dj: null,
+      emoteFx: null,
       clip: null,
       custom: null,
       emote: null,
@@ -571,6 +695,14 @@ class PreviewManager {
           state.emote = item.id
           if (item.id.startsWith('web_')) state.custom = ((await previewAsset(item.hash)).json as CustomEmote) || null
           else state.clip = await previewClip(item.id)
+          // Objects and effects of the emote, as in the client: the DJ deck, the bundle emotes' effects.
+          if (item.id === 'dj') await addDjBooth(state).catch(() => {})
+          if (hasEmoteEffect(item.id)) {
+            const fx = emoteEffect(item.id)
+            state.scene.add(fx.object)
+            state.effects.push(fx)
+            state.emoteFx = fx
+          }
         } else if (item.kind === 'pet') {
           state.emote = 'minime'
           state.clip = await previewClip('minime')

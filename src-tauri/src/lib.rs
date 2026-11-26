@@ -316,6 +316,8 @@ pub fn run() {
             turtleclient::turtle_emote_wheel,
             turtleclient::turtle_playtime,
             turtleclient::turtle_gift_notes,
+            turtleclient::turtle_stop,
+            turtleclient::turtle_social,
             commands::content::core_version,
             commands::system::app_version,
             commands::system::remember_install_id,

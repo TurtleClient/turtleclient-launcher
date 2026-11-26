@@ -28,7 +28,6 @@ export function Nametag({ nick, at, own=false }: { nick: string; at: { x: number
   return (
     <span className="mc-nametag" style={{ left: at.x + 'px', top: at.y + 'px',...(model?.tag?{borderBottom:'2px solid '+turtleTagColor(model.tag.animation,model.tag.line,time)}:{}) }}>
       {model?.tag ? [...name].map((char,index)=><span key={index} style={{color:turtleTagColor(model.tag!.animation,model.tag!.line,time,index,name.length)}}>{char}</span>) : name}
-      {model?.tag && <img src={'data:image/png;base64,'+model.texture.png} width={12} height={12} alt="" style={{marginLeft:5,imageRendering:'pixelated'}} />}
     </span>
   )
 }

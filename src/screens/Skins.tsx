@@ -105,7 +105,8 @@ import { TurtleCatalog } from '../components/shop/TurtleCatalog'
 import { BRAND } from '../lib/branding'
 import { FittingBar } from '../components/character/FittingBar'
 import { Nametag, nametagSpot } from '../components/character/Nametag'
-import { TurtleWardrobe, TURTLE_WARDROBE_CATEGORIES } from '../components/character/TurtleWardrobe'
+import { TurtleWardrobe, TURTLE_WARDROBE_CATEGORIES, useEmoteHover } from '../components/character/TurtleWardrobe'
+import { TurtlePreview } from '../components/shop/turtle/TurtlePreview'
 import { CATEGORY_ICON, useCategoryLabel } from '../components/shop/turtle/ShopCard'
 import { useTurtleCharacter } from '../lib/useTurtleCharacter'
 import { useTurtleWardrobe, categoryOf } from '../state/turtleWardrobe'
@@ -3131,6 +3132,9 @@ export function Skins({ on }: { on: boolean }) {
   const turtleWardrobe = useTurtleWardrobe()
   const categoryLabel = useCategoryLabel()
   useTurtleCharacter(viewerRef, BRAND.services ? 0 : engineReady, fitViewer)
+  // An emote under the pointer in the wardrobe plays here, on the player's own figure.
+  const emoteHover = useEmoteHover()
+  const hoverPlay = !BRAND.services && on && !!emoteHover.items
   // Turtle: the skin, then exactly the client's catalogue (Head … Emotes).
   const sectionList: Section[] = !BRAND.services ? [
     { key: 'skin', name: t('Скины'), icon: 'ws-skin' },
@@ -3569,7 +3573,7 @@ export function Skins({ on }: { on: boolean }) {
             }}
           >
             <div className="skin-aura" aria-hidden="true"></div>
-            <Nametag nick={nick} at={tagAt || (!use3d ? {x:150,y:45} : null)} own />
+            {hoverPlay ? null : <Nametag nick={nick} at={tagAt || (!use3d ? {x:150,y:45} : null)} own />}
             <canvas
               key={glEpoch}
               id="skinCanvas"
@@ -3577,10 +3581,15 @@ export function Skins({ on }: { on: boolean }) {
               style={{
                 imageRendering: 'auto',
                 display: use3d ? undefined : 'none',
-                opacity: modelShown && dressReady ? 1 : 0,
+                opacity: modelShown && dressReady && !hoverPlay ? 1 : 0,
                 transition: 'opacity var(--m-t-base)',
               }}
             ></canvas>
+            {hoverPlay && emoteHover.items ? (
+              <div className="tw-hover-stage" aria-hidden="true">
+                <TurtlePreview key={emoteHover.key} items={emoteHover.items} className="tp-large" />
+              </div>
+            ) : null}
             {use3d && !(modelShown && dressReady) ? <span className="skin-loader" aria-label={t('Загружаем модель')}></span> : null}
             {fitLoading.length ? (
               <span className="stage-note" aria-live="polite">

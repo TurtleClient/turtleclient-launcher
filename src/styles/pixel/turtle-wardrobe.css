@@ -19,3 +19,11 @@
 .tw-empty p { margin: 0; color: var(--m-fg-muted); }
 .tw-empty-ic { width: 40px; height: 40px; color: var(--m-fg-faint); }
 .tw-art-ic { width: 40%; height: 40%; color: var(--m-fg-muted); }
+
+/* A tile wrapper that only listens for the pointer: the grid still sees the tile. */
+.tw-tile { display: contents; }
+/* The hovered emote, played over the big figure with what the player wears. */
+.tw-hover-stage { position: absolute; inset: 0; z-index: 3; pointer-events: none; animation: tw-hover-in 0.18s ease-out both; }
+.tw-hover-stage .tp { position: absolute; inset: 0; width: 100%; height: 100%; }
+@keyframes tw-hover-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tw-hover-stage { animation: none; } }

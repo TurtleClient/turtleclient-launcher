@@ -1,4 +1,4 @@
-// Player heads for lists and the profile. The nickname goes to api.millida.net (skin and head render), ready PNGs are cached on disk.
+// Player heads for lists and the profile. The nickname goes to Mojang (official skin), then api.millida.net (skin and head render); ready PNGs are cached on disk.
 // No tokens are sent.
 use super::library::as_data_url;
 use crate::engine::*;
@@ -17,8 +17,10 @@ const TTL: Duration = Duration::from_secs(14 * 24 * 3600);
 const MAX_BYTES: usize = 200_000;
 const MAX_FILES: usize = 400;
 
+/// Version 2: heads from the official Minecraft skin first. The old folder held faces the
+/// head service had answered with Steve's for Microsoft players.
 fn heads_dir() -> PathBuf {
-    data_dir().join("cache").join("heads")
+    data_dir().join("cache").join("heads-v2")
 }
 
 /// Minecraft nicks are alphanumeric plus underscore; anything else must never
@@ -134,9 +136,65 @@ fn head_from_skin(skin: &[u8], px: u32) -> Result<Vec<u8>, String> {
     Ok(png)
 }
 
-/// CustomSkinAPI first, then the platform head renderer for accounts that have
-/// no profile here.
+/// GET with a short timeout: a head must not wait on a slow source before the next one.
+async fn fetch(url: &str, max: usize) -> Result<Vec<u8>, String> {
+    let res = client()
+        .get(url)
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("head_http_{}", res.status().as_u16()));
+    }
+    read_capped(res, max).await
+}
+
+/// The player's official Minecraft skin, the one the game shows: the name's profile at
+/// Mojang, its textures property, then the skin from textures.minecraft.net. Only the
+/// nickname and the profile id are sent.
+async fn download_mojang(nick: &str, px: u32) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    let profile: serde_json::Value = serde_json::from_slice(
+        &fetch(&format!("https://api.mojang.com/users/profiles/minecraft/{nick}"), 16_000).await?,
+    )
+    .map_err(|e| e.to_string())?;
+    let id = profile["id"]
+        .as_str()
+        .filter(|id| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+        .ok_or("head_no_profile")?;
+    let session: serde_json::Value = serde_json::from_slice(
+        &fetch(&format!("https://sessionserver.mojang.com/session/minecraft/profile/{id}"), 64_000).await?,
+    )
+    .map_err(|e| e.to_string())?;
+    let value = session["properties"]
+        .as_array()
+        .and_then(|list| list.iter().find(|p| p["name"] == "textures"))
+        .and_then(|p| p["value"].as_str())
+        .ok_or("head_no_textures")?;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(value)
+        .map_err(|e| e.to_string())?;
+    let textures: serde_json::Value = serde_json::from_slice(&decoded).map_err(|e| e.to_string())?;
+    let url = textures["textures"]["SKIN"]["url"].as_str().ok_or("head_default_skin")?;
+    // Only Mojang's texture host, whatever the property says.
+    let hash = url
+        .strip_prefix("http://textures.minecraft.net/texture/")
+        .or_else(|| url.strip_prefix("https://textures.minecraft.net/texture/"))
+        .filter(|h| !h.is_empty() && h.len() <= 128 && h.bytes().all(|b| b.is_ascii_alphanumeric()))
+        .ok_or("head_foreign_host")?;
+    let skin = fetch(&format!("https://textures.minecraft.net/texture/{hash}"), 2_000_000).await?;
+    tokio::task::spawn_blocking(move || head_from_skin(&skin, px))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The official Minecraft skin first (TurtleClient players sign in with Microsoft), then
+/// CustomSkinAPI, then the platform head renderer.
 async fn download(nick: &str, px: u32) -> Result<Vec<u8>, String> {
+    if let Ok(bytes) = download_mojang(nick, px).await {
+        return Ok(bytes);
+    }
     match download_millida(nick, px).await {
         Ok(bytes) => Ok(bytes),
         Err(_) => download_head_service(nick, px).await,

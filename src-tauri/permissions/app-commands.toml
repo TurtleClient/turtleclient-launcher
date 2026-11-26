@@ -20,6 +20,8 @@ permissions = [
   "allow-turtle-emote-wheel",
   "allow-turtle-playtime",
   "allow-turtle-gift-notes",
+  "allow-turtle-stop",
+  "allow-turtle-social",
   "allow-core-version",
   "allow-app-version",
   "allow-remember-install-id",

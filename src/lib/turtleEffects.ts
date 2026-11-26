@@ -94,6 +94,8 @@ async function trailSheet(): Promise<HTMLCanvasElement> {
 type Rgb = [number, number, number]
 interface QuadSink {
   quad(center: Vector3, x: Vector3, y: Vector3, uv: [number, number, number, number], rgb: Rgb, opacity: number): void
+  /** Four corners in order, one colour: the client's Draw::quad. */
+  poly(points: Vector3[], uv: [number, number], rgb: Rgb, opacity: number): void
 }
 
 function quadMesh(capacity: number) {
@@ -124,6 +126,19 @@ function quadMesh(capacity: number) {
         const i = count * 4 + k
         corner.copy(center).addScaledVector(x, sx).addScaledVector(y, sy)
         positions.set([corner.x, corner.y, corner.z], i * 3)
+        uvs.set([u, v], i * 2)
+        colors.set([linear.r, linear.g, linear.b, a], i * 4)
+      })
+      count++
+    },
+    poly(points, [u, v], rgb, opacity) {
+      if (count >= capacity) return
+      const a = Math.max(0, Math.min(1, opacity))
+      if (a <= 0) return
+      linear.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, SRGBColorSpace)
+      points.forEach((p, k) => {
+        const i = count * 4 + k
+        positions.set([p.x, p.y, p.z], i * 3)
         uvs.set([u, v], i * 2)
         colors.set([linear.r, linear.g, linear.b, a], i * 4)
       })
@@ -368,4 +383,234 @@ function trailBuild(style: number) {
 /** The trail the player wears, drawn on the client's shop preview path behind the figure. */
 export function turtleTrail(id: string): TurtleEffect {
   return effect(trailBuild(trailStyle(id) ?? 0), 128, trailSheet)
+}
+
+/* ---------- Emote effects: game/turtle/demon.rs and bundle_effects.rs ---------- */
+
+const EMOTE_EFFECTS = ['demon_ascension', 'angel_ascension', 'husky_howl']
+export const hasEmoteEffect = (id: string | null) => !!id && EMOTE_EFFECTS.includes(id)
+export interface EmoteEffect extends TurtleEffect {
+  /** The emote's own clock, the figure's lift in blocks and its side axis (body yaw). */
+  pose(time: number, height: number, sideX: number, sideZ: number): void
+}
+
+const RED: Rgb = [235, 34, 21]
+const EMBER: Rgb = [255, 110, 29]
+const DEMON_GOLD: Rgb = [255, 215, 131]
+const GOLD: Rgb = [255, 207, 109]
+const PEARL: Rgb = [255, 248, 219]
+const ICE: Rgb = [155, 213, 255]
+const SNOW: Rgb = [229, 249, 255]
+const OPEN = 1.38
+const LAND = 3.48
+const LENGTH = 5.32
+/** The white texel of the trail sheet: plain colour quads. */
+const WHITE: [number, number] = [2 / 80, 26 / 28]
+const ease = (t: number) => {
+  const c = Math.min(1, Math.max(0, t))
+  return c * c * (3 - 2 * c)
+}
+const v3 = (x = 0, y = 0, z = 0) => new Vector3(x, y, z)
+const radial = (r: number, angle: number) => v3(r * Math.cos(angle), 0, r * Math.sin(angle))
+
+/** The client's Draw: quads, strokes, sparks and circles in blocks around the feet. */
+function draw(sink: QuadSink, right: Vector3, up: Vector3) {
+  const quad = (points: Vector3[], rgb: Rgb, alpha: number) => {
+    if (Math.floor(Math.min(1, Math.max(0, alpha)) * 255) === 0) return
+    sink.poly(points, WHITE, rgb, alpha)
+  }
+  return {
+    quad,
+    stroke(a: Vector3, b: Vector3, cross: Vector3, width: number, rgb: Rgb, alpha: number) {
+      const w = b.clone().sub(a).cross(cross)
+      if (w.lengthSq() > 0) w.normalize().multiplyScalar(width)
+      quad([a.clone().sub(w), a.clone().add(w), b.clone().add(w), b.clone().sub(w)], rgb, alpha)
+    },
+    spark(at: Vector3, radius: number, rgb: Rgb, alpha: number) {
+      const r = right.clone().multiplyScalar(radius)
+      const u = up.clone().multiplyScalar(radius)
+      quad([at.clone().sub(u), at.clone().add(r), at.clone().add(u), at.clone().sub(r)], rgb, alpha)
+    },
+    circle(radius: number, y: number, width: number, alpha: number, gaps: boolean) {
+      const lift = v3(0, y, 0)
+      for (let i = 0; i < 36; i++) {
+        if (gaps && i % 6 === 5) continue
+        const a = (i * TAU) / 36
+        const b = ((i + 1) * TAU) / 36
+        const p = (r: number, s: number) => radial(r, s).add(lift)
+        quad([p(radius - width, a), p(radius + width, a), p(radius + width, b), p(radius - width, b)], RED, alpha * 0.3)
+        const w = width * 0.24
+        quad([p(radius - w, a), p(radius + w, a), p(radius + w, b), p(radius - w, b)], EMBER, alpha)
+      }
+    },
+    ring(center: Vector3, axes: [Vector3, Vector3], radius: number, width: number, rgb: Rgb, alpha: number) {
+      for (let index = 0; index < 24; index++) {
+        const point = (i: number, r: number) => {
+          const angle = (i * TAU) / 24
+          return center.clone().addScaledVector(axes[0], r * Math.cos(angle)).addScaledVector(axes[1], r * Math.sin(angle))
+        }
+        quad([point(index, radius - width), point(index, radius + width), point(index + 1, radius + width), point(index + 1, radius - width)], rgb, alpha)
+      }
+    },
+  }
+}
+type Draw = ReturnType<typeof draw>
+
+function embers(d: Draw, t: number, life: number, amount: number, y: number) {
+  for (let i = 0; i < amount; i++) {
+    const variance = ((i * 91 + 5) % 23) / 23
+    const age = t - variance * 0.27
+    if (age < 0 || age >= life) continue
+    const p = age / life
+    const angle = i * 2.39996 + 0.22 * age
+    const center = radial(0.12 + (1.9 + variance * 1.7) * age, angle).add(v3(0, y + Math.max(0.03, (1.4 + 2.4 * variance) * age - 2.6 * age * age), 0))
+    const radius = (0.024 + variance * 0.045) * (1 - p * 0.58)
+    d.spark(center, radius * 1.9, RED, (1 - p) * 0.29)
+    d.spark(center, radius, i % 3 === 0 ? DEMON_GOLD : EMBER, (1 - p) * 0.88)
+  }
+}
+
+/** demon.rs geometry(): the charge, the wing flash on opening and the landing impact. */
+function demonAscension(d: Draw, time: number, wing: Vector3, normal: Vector3) {
+  if (time < 0.08 || time >= LENGTH) return
+  if (time < OPEN) {
+    const p = Math.min(1, time / OPEN)
+    const gain = ease(p * 2.4)
+    d.circle(0.48 + p * 0.11, 0.038, 0.045, gain * 0.76, true)
+    d.circle(0.76 - p * 0.12, 0.043, 0.024, gain * 0.49, true)
+    for (let j = 0; j < 2; j++) {
+      const side = j === 0 ? 1 : -1
+      const path = (u: number) => {
+        const spin = side * (2.35 * u + time * 3.65) + (j * TAU) / 2
+        return radial((0.72 - u * 0.24) * (1 - p * 0.25), spin).add(v3(0, 0.13 + u * (1.35 + p * 0.55), 0))
+      }
+      for (let i = 0; i < 20; i++) {
+        const u = i / 20
+        const v = (i + 1) / 20
+        const alpha = (u * 0.8 + 0.2) * gain
+        d.stroke(path(u), path(v), normal, 0.043, RED, alpha * 0.48)
+        d.stroke(path(u), path(v), normal, 0.012, DEMON_GOLD, alpha * 0.68)
+      }
+      d.spark(path(1), 0.075 + p * 0.05, DEMON_GOLD, gain)
+    }
+  }
+  if (time >= OPEN && time < OPEN + 1.34) {
+    const t = time - OPEN
+    const p = t / 1.34
+    d.circle(0.58 + 2.35 * ease(p), 0.047, 0.095 * (1 - p) + 0.02, (1 - p) ** 2, false)
+    const grow = ease(t / 0.24)
+    const fade = (1 - p) ** 2
+    for (const side of [-1, 1]) {
+      const point = (u: number, trail: number) =>
+        wing.clone().multiplyScalar(side * (0.17 + u * (0.92 + 1.52 * grow)))
+          .add(v3(0, 1.12 + Math.sin(u * 2.45) * (0.58 + 1.13 * grow) - trail * (0.06 + u * 0.24), 0))
+          .addScaledVector(normal, Math.sin(u * 2.85) * 0.17 - trail * 0.07)
+      for (let j = 0; j < 3; j++) {
+        for (let i = 0; i < 15; i++) {
+          const u = i / 15
+          d.stroke(point(u, j), point((i + 1) / 15, j), normal, j === 0 ? 0.065 : 0.032, j === 0 ? EMBER : RED, fade * (0.83 - 0.2 * j) * (1 - u * 0.4))
+        }
+      }
+    }
+    embers(d, t, 1.34, 28, 1.1)
+  }
+  if (time >= LAND && time < LAND + 1.64) {
+    const t = time - LAND
+    const p = t / 1.64
+    const radius = 0.38 + 2.82 * ease(p * 1.3)
+    d.circle(radius, 0.049, 0.085, (1 - p) ** 2, false)
+    if (t > 0.09) d.circle(radius * 0.71, 0.041, 0.044, (1 - p) ** 2 * 0.85, true)
+    for (let i = 0; i < 14; i++) {
+      const angle = i * 2.39996
+      const token = ((i * 37 + 8) % 13) / 13
+      const expansion = ease(t * (2.0 + token))
+      const lift = v3(0, 0.045 + token * 0.004, 0)
+      const a = radial(0.38, angle).add(lift)
+      const b = radial(0.72 + expansion * 0.52, angle - 0.08).add(lift)
+      const c = radial(0.86 + expansion * (0.71 + token * 0.76), angle + 0.07).add(lift)
+      d.stroke(a, b, v3(0, 1, 0), 0.035, RED, (1 - p) ** 2)
+      d.stroke(b, c, v3(0, 1, 0), 0.026, EMBER, (1 - p) ** 2)
+    }
+    embers(d, t, 1.64, 36, 0.08)
+  }
+}
+
+/** bundle_effects.rs angel(): golden rings on the floor, rising sparks and a halo ring. */
+function angelAscension(d: Draw, time: number, height: number) {
+  if (time < 0.06 || time >= 4.65) return
+  const floor = v3(0, 0.055, 0)
+  const flat: [Vector3, Vector3] = [v3(1, 0, 0), v3(0, 0, 1)]
+  for (const [event, life, limit] of [[0.96, 0.8, 1.95], [3.95, 0.7, 1.48]]) {
+    const age = (time - event) / life
+    if (age < 0 || age >= 1) continue
+    const fade = (1 - age) ** 2
+    const r = 0.35 + limit * ease(age)
+    d.ring(floor, flat, r, 0.04, GOLD, fade * 0.55)
+    d.ring(floor, flat, r, 0.011, PEARL, fade * 0.95)
+  }
+  const charge = ease(time / 0.64) * (1 - ease((time - 0.85) / 0.36))
+  if (charge > 0) d.ring(floor, flat, 0.55, 0.014, GOLD, charge * 0.7)
+  const glow = ease((time - 0.45) / 0.75) * (1 - ease((time - 3.2) / 1.32))
+  for (let i = 0; i < 22; i++) {
+    const age = fract(time * 0.85 + i * 0.383)
+    const angle = i * 2.39996 + time * 2.4 + age * 0.96
+    const y = 0.19 + age * (1.57 + 0.64 * height)
+    const center = radial(0.43 + 0.31 * Math.abs(Math.sin(age * TAU)) + 0.24 * age, angle).add(v3(0, y, 0))
+    const alpha = glow * Math.min(age * 9, (1 - age) * 6, 1)
+    const radius = 0.036 + 0.039 * fract(i * 0.673)
+    d.spark(center, radius * 1.9, GOLD, alpha * 0.24)
+    d.spark(center, radius, PEARL, alpha * 0.92)
+  }
+  if (glow > 0) d.ring(v3(0, 2.06 + height, 0), flat, 0.37 + 0.055 * Math.sin(time * 4), 0.012, PEARL, glow * 0.57)
+}
+
+/** bundle_effects.rs husky(): a frosty breath with rings in front of the muzzle. */
+function huskyHowl(d: Draw, time: number, height: number, axis: Vector3) {
+  if (time < 1.6 || time >= 3.48) return
+  const heading = axis.clone().cross(v3(0, 1, 0))
+  const breath = heading.clone().multiplyScalar(0.18).add(v3(0, 1.76 + height, 0))
+  const count = 23
+  for (let i = 0; i < count; i++) {
+    const emission = 1.66 + i * (1.04 / count)
+    const age = time - emission
+    if (age < 0 || age >= 0.77) continue
+    const spin = i * 2.39996
+    const radius = age * (0.31 + fract(i * 0.417) * 0.47)
+    const center = breath.clone()
+      .addScaledVector(heading, age * (0.62 + fract(i * 0.37) * 0.49))
+      .add(v3(0, age * 0.84 + Math.sin(spin) * radius, 0))
+      .addScaledVector(axis, Math.cos(spin) * radius)
+    const fade = ease(age / 0.07) * (1 - age / 0.77) ** 2
+    d.spark(center, 0.065 + age * 0.24, ICE, fade * 0.34)
+    d.spark(center, 0.019 + fract(i * 0.122) * 0.045, SNOW, fade * 0.94)
+  }
+  for (const event of [1.76, 2.36]) {
+    const age = (time - event) / 0.72
+    if (age >= 0 && age < 1) {
+      const center = breath.clone().addScaledVector(heading, age * 0.72).add(v3(0, age * 0.56, 0))
+      d.ring(center, [axis, v3(0, 1, 0)], 0.11 + 0.73 * ease(age), 0.015, ICE, (1 - age) ** 2 * 0.55)
+    }
+  }
+}
+
+/** The effect an emote draws in the client (demon, angel and husky emotes), on the emote's clock. */
+export function emoteEffect(id: string): EmoteEffect {
+  let clock = 0
+  let lift = 0
+  const side = v3(1, 0, 0)
+  const normal = v3()
+  const base = effect((_t, right, up, sink) => {
+    const d = draw(sink, right, up)
+    if (id === 'demon_ascension') demonAscension(d, clock, side, normal.copy(right).cross(up))
+    else if (id === 'angel_ascension') angelAscension(d, clock, lift)
+    else if (id === 'husky_howl') huskyHowl(d, clock, lift, side)
+  }, 3000, trailSheet)
+  return {
+    ...base,
+    pose(time, height, sideX, sideZ) {
+      clock = time
+      lift = height
+      side.set(sideX, 0, sideZ).normalize()
+    },
+  }
 }

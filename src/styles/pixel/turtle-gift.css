@@ -1,7 +1,7 @@
 /* Gifts from friends (src/components/gifts/TurtleGiftHost.tsx): the Home button and the full-screen present. */
 
 .tg-home {
-  position: fixed; left: 24px; bottom: 24px; z-index: 30; display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px 0 8px;
+  position: fixed; left: 20px; bottom: 96px; z-index: 30; display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px 0 8px;
   border: 0; cursor: pointer; font: inherit; font-size: 16px; font-weight: 900; color: #fff;
   background: linear-gradient(180deg, #ff7aa2, #e0487b); box-shadow: 0 10px 28px rgb(0 0 0 / 0.35); --px-n: 6px; clip-path: var(--px-5);
   animation: tg-nudge 2.4s var(--m-ease-smooth) infinite;

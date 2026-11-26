@@ -34,6 +34,7 @@ const InstancePage = lazy(() => import('./modals/InstancePage').then((m) => ({ d
 const ChestOpenHost = lazy(() => import('./components/daily/ChestOpen').then((m) => ({ default: m.ChestOpenHost })))
 // Gifts from friends: the full-screen present and the Home gift button (TurtleClient only).
 const TurtleGiftHost = lazy(() => import('./components/gifts/TurtleGiftHost'))
+const TurtleChat = lazy(() => import('./components/friends/TurtleChat'))
 // Kept out of the startup bundle: most sessions never open them, and each is mounted
 // on its first opening and stays mounted so the closing transition still plays.
 const ProjectModal = lazy(() => import('./modals/Project').then((m) => ({ default: m.ProjectModal })))
@@ -421,10 +422,13 @@ export function App() {
     let live = true
     let stop: (() => void) | undefined
     let stopShop: (() => void) | undefined
+    let stopSocial: (() => void) | undefined
     void import('./state/turtleFriends').then(module => { if (live) stop = module.watchTurtleFriends() })
     // Ocean inventory app-wide: Home and the wardrobe wear what was bought and equipped.
     void import('./state/turtleShop').then(module => { if (live) stopShop = module.watchTurtleShop() })
-    return () => { live = false; stop?.(); stopShop?.() }
+    // Friends chat and world invites through Ocean, as in the native client.
+    if (!BRAND.services) void import('./state/turtleSocial').then(module => { if (live) stopSocial = module.watchTurtleSocial() })
+    return () => { live = false; stop?.(); stopShop?.(); stopSocial?.() }
   }, [logged])
   const screen = useUi((s) => s.screen)
   const navPending = useUi((s) => s.navPending)
@@ -1202,6 +1206,7 @@ export function App() {
         {!BRAND.services ? (
           <Suspense fallback={null}>
             <TurtleGiftHost />
+            <TurtleChat />
           </Suspense>
         ) : null}
         <PixelTip />

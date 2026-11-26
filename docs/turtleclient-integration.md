@@ -39,8 +39,8 @@ service restarts. Acceptance must come from the recipient. Online means the
 launcher has polled within the last 75 seconds. A central heartbeat runs every
 20 seconds, renews expired sessions and reconnects after network failures/server
 restarts. Switching accounts clears the previous view and stops its heartbeat;
-logging out or selecting an offline account stops polling. This release does not promise
-in-game presence, direct messages, calls or server invitations.
+logging out or selecting an offline account stops polling. Chat and world invites
+are described under Home, friends and chat below; calls are not part of the launcher.
 
 The independent Rust service lives in `services/friends`, listens only on
 `127.0.0.1:3001`, and uses `/var/lib/turtleclient/friends/friends.json` on the VPS.
@@ -164,3 +164,43 @@ wall-clock time. Totals are stored in `playtime.json` beside `friends.json`
 (`TURTLE_PLAYTIME_FILE` overrides it); `friends.json`, which Ocean also reads,
 is not touched. `GET /social/playtime` returns `{seconds, playing}`; Home shows it
 under Play. Time played while the launcher is closed is not counted.
+
+### Home, friends and chat
+
+Home shows the player's head and name at the top right (no account kind), the
+friends list below it, news at the bottom right and settings and bug report at
+the bottom left. Heads come from the official Minecraft skin first (Mojang profile,
+then `textures.minecraft.net`), then the earlier sources; cached heads live in
+`cache/heads-v2`, so faces the old head service had answered with Steve's are not reused.
+
+Friends are the launcher roster. Their status is "Playing TurtleClient" while their
+launcher sends playtime beats (`GET /social/playtime/friends`, friends only), else
+online (launcher or game) or offline. The chat is the native client's Ocean thread:
+
+| Launcher action | Ocean route |
+| --- | --- |
+| Unread counts, online, world invites (every 10 s, 30 s hidden) | `GET /api/social/sync` |
+| Open chat (every 4 s while open) | `GET /api/social/thread/<uuid>` |
+| Send (1 to 1000 characters, nonce) | `POST /api/social/thread/<uuid>` |
+| Mark read | `POST /api/social/action` `{kind:"read"}` |
+| Picture in a message | `GET /api/social/image/<uuid>` |
+
+Syncing marks the player online in Ocean like the game does. Accepting a world
+invite starts the client with `--quickPlayMultiplayer friend:<code>` (Launch API),
+so it joins the friend at start; a client that is already open is restarted after
+asking. The code is checked to be the client's base32 format before it is passed.
+
+While the client runs, Play becomes a red Stop client with the playtime under it.
+Stopping closes the client like its window's close button (the world is saved) and
+ends it after 20 seconds only if it is still running; the playtime session ends at once.
+
+### Wardrobe capes and emotes
+
+Team capes are GIFs in Ocean's asset store and show like any cape; animated capes
+play in previews (`ImageDecoder`). The big figure wears the cape Ocean serves for
+the player (`/api/cape/<uuid>`), the team cape included. Name tags show no mark
+after the name. Emote previews draw what the client draws: the DJ deck for `dj`
+(website asset, served read-only as `/turtleclient/previews/dj_booth.json`) and the
+effects of Demon Ascension, Angel Ascension and Husky Howl (a port of the client's
+`demon.rs` and `bundle_effects.rs`). Hovering an emote in the wardrobe plays it on
+the player's figure with what they wear.

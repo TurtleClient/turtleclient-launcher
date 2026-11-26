@@ -1,0 +1,130 @@
+/* TurtleClient Home (owner, 26.11.2026): friends at the top right under the player,
+   news at the bottom right, settings and bug report at the bottom left, chat beside the
+   friends. components/lobby/TurtleHomeFriends.tsx, components/friends/TurtleChat.tsx. */
+
+/* ---------- Friends panel ---------- */
+.thf {
+  position: absolute; z-index: 6; top: 88px; right: 16px; width: 300px; max-height: calc(100% - 336px); min-height: 0;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  background: rgb(10 18 12 / 0.78); backdrop-filter: blur(6px);
+  --px-n: 6px; clip-path: var(--px-5);
+}
+@media (max-height: 640px) { .thf { max-height: calc(100% - 120px); } }
+.thf-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 2px 4px; }
+.thf-title { display: inline-flex; align-items: center; gap: 8px; font: 900 15px/1 var(--m-font); color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+.thf-title > svg.icon { width: 18px; height: 18px; }
+.thf-count { font: 800 12px/1 var(--m-font); color: var(--m-accent); letter-spacing: 0; }
+.thf-add { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border: 0; cursor: pointer; color: #fff; background: rgb(255 255 255 / 0.1); --px-n: 3px; clip-path: var(--px-4); }
+.thf-add:hover { background: rgb(255 255 255 / 0.2); }
+.thf-add > svg.icon { width: 16px; height: 16px; }
+.thf-req { position: absolute; top: -2px; right: -2px; min-width: 16px; height: 16px; display: grid; place-items: center; padding: 0 3px; font: 900 10px/1 var(--m-font); color: #fff; background: #e8202a; }
+.thf-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.thf-cap { margin: 6px 2px 2px; font: 800 11px/1 var(--m-font); color: var(--m-fg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.thf-empty { margin: 4px 2px; font: 600 13px/1.35 var(--m-font); color: var(--m-fg-muted); }
+.thf-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; border: 0; cursor: pointer; text-align: start;
+  font: inherit; color: #fff; background: transparent; --px-n: 3px; clip-path: var(--px-4);
+}
+.thf-row:hover:not(:disabled), .thf-row.on { background: rgb(255 255 255 / 0.1); }
+.thf-row:disabled { cursor: default; }
+.thf-head { position: relative; flex: none; width: 36px; height: 36px; }
+.thf-head > img { display: block; width: 36px; height: 36px; }
+.thf-dot { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; background: #6b7280; outline: 3px solid rgb(10 18 12); }
+.thf-row.is-online .thf-dot { background: var(--m-accent); }
+.thf-row.is-playing .thf-dot { background: #4cc3ff; }
+.thf-row.is-offline .thf-head > img { filter: grayscale(1) brightness(0.65); }
+.thf-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.thf-body b { font: 800 15px/1.1 var(--m-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thf-body small { font: 700 12px/1.1 var(--m-font); color: var(--m-fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thf-row.is-online .thf-body small { color: var(--m-accent); }
+.thf-row.is-playing .thf-body small { color: #7fd4ff; }
+.thf-row.is-offline .thf-body b { color: rgb(255 255 255 / 0.6); }
+.thf-chat { flex: none; width: 16px !important; height: 16px !important; opacity: 0; transition: opacity var(--m-t-fast); }
+.thf-row:hover .thf-chat, .thf-row.on .thf-chat { opacity: 0.8; }
+.thf-unread { flex: none; min-width: 22px; height: 20px; display: grid; place-items: center; padding: 0 5px; font: 900 11px/1 var(--m-font); color: #fff; background: #e8202a; }
+
+.thf-invite {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 6px 8px; align-items: center; padding: 8px;
+  background: linear-gradient(180deg, rgb(76 195 255 / 0.28), rgb(76 195 255 / 0.12)); --px-n: 4px; clip-path: var(--px-4);
+  animation: thf-in 0.3s var(--m-ease-smooth) both;
+}
+.thf-invite > img { width: 28px; height: 28px; }
+.thf-invite-txt { font: 800 13px/1.25 var(--m-font); color: #fff; }
+.thf-invite-acts { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; }
+.thf-invite-acts .btn { flex: 1 1 auto; justify-content: center; }
+.thf-invite-acts .btn > svg.icon { width: 14px; height: 14px; }
+.thf-x { display: grid; place-items: center; width: 30px; height: 30px; border: 0; cursor: pointer; color: #fff; background: rgb(0 0 0 / 0.25); }
+.thf-x > svg.icon { width: 14px; height: 14px; }
+@keyframes thf-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* News and Discord banner at the bottom right. */
+:root .lobby-turtle .lrec-wrap { top: auto; bottom: 20px; transform: none; }
+/* The dock sits above the window edge, so "Stop client" and the playtime stay whole. */
+:root .lobby-turtle .lobby-side { bottom: 14px; }
+:root .lobby-turtle .lobby-row #playBtn.stop { font-size: 26px; }
+:root .lobby-turtle .lobby-row #playBtn.stop .play-hours { color: rgb(255 255 255 / 0.78); }
+:root .lobby-turtle .lobby-row #playBtn.stop #playLbl { white-space: nowrap; }
+
+/* ---------- Chat ---------- */
+.tch {
+  position: fixed; z-index: 70; right: 16px; bottom: 16px; width: 380px; height: min(560px, calc(100vh - 120px));
+  display: flex; flex-direction: column; background: rgb(12 20 14 / 0.96); box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+  --px-n: 6px; clip-path: var(--px-5); animation: tch-in 0.22s var(--m-ease-smooth) both;
+}
+/* On Home the chat stands left of the friends list, which stays usable. */
+.tch.beside { right: 332px; top: 132px; bottom: auto; height: min(560px, calc(100vh - 270px)); min-height: 300px; }
+@media (max-width: 1100px) { .tch.beside { right: 16px; } }
+@keyframes tch-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.tch-top { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; background: rgb(255 255 255 / 0.06); }
+.tch-top > img { width: 36px; height: 36px; flex: none; }
+.tch-who { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.tch-who b { font: 900 16px/1.1 var(--m-font); color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tch-who small { font: 700 12px/1 var(--m-font); color: var(--m-fg-muted); }
+.tch-who small.is-online { color: var(--m-accent); }
+.tch-who small.is-playing { color: #7fd4ff; }
+.tch-x { display: grid; place-items: center; width: 32px; height: 32px; border: 0; cursor: pointer; color: #fff; background: rgb(255 255 255 / 0.08); --px-n: 3px; clip-path: var(--px-4); }
+.tch-x:hover { background: rgb(255 255 255 / 0.16); }
+.tch-x > svg.icon { width: 16px; height: 16px; }
+.tch-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; scrollbar-width: thin; }
+.tch-empty { margin: auto; font: 700 13px/1.4 var(--m-font); color: var(--m-fg-muted); text-align: center; }
+.tch-day { margin: 8px auto 4px; width: fit-content; padding: 3px 8px; font: 800 11px/1 var(--m-font); color: var(--m-fg-muted); background: rgb(255 255 255 / 0.06); }
+.tch-msg { display: flex; flex-direction: column; gap: 4px; max-width: 82%; width: fit-content; padding: 8px 10px; color: #fff; background: rgb(255 255 255 / 0.1); --px-n: 4px; clip-path: var(--px-4); }
+.tch-msg.mine { margin-left: auto; color: #06200e; background: var(--m-accent); }
+.tch-msg.pending { opacity: 0.6; }
+.tch-msg.failed { background: rgb(232 32 42 / 0.85); color: #fff; }
+.tch-msg p { margin: 0; font: 600 14px/1.35 var(--m-font); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tch-msg time { align-self: flex-end; font: 700 10px/1 var(--m-font); opacity: 0.65; }
+.tch-img { display: block; max-width: 240px; max-height: 240px; image-rendering: auto; }
+.tch-img.is-wait { width: 160px; height: 100px; background: rgb(255 255 255 / 0.1); }
+.tch-invite { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font: 800 13px/1.3 var(--m-font); }
+.tch-invite > svg.icon { width: 22px; height: 22px; }
+.tch-invite small { font: 700 11px/1 var(--m-font); opacity: 0.7; }
+.tch-invite .btn > svg.icon { width: 14px; height: 14px; }
+.tch-send { display: flex; gap: 8px; align-items: flex-end; padding: 10px; background: rgb(255 255 255 / 0.04); }
+.tch-send textarea {
+  flex: 1 1 auto; min-height: 40px; max-height: 120px; resize: none; padding: 10px; border: 0; outline: 0;
+  font: 600 14px/1.35 var(--m-font); color: #fff; background: rgb(0 0 0 / 0.35); field-sizing: content;
+}
+.tch-send textarea:focus { box-shadow: inset 0 0 0 2px var(--m-accent); }
+.tch-send .btn { flex: none; width: 44px; height: 40px; padding: 0; justify-content: center; }
+.tch-send .btn > svg.icon { width: 18px; height: 18px; }
+.tch-count { position: absolute; right: 70px; bottom: 54px; font: 700 10px/1 var(--m-font); color: var(--m-fg-muted); }
+@media (prefers-reduced-motion: reduce) { .tch, .thf-invite { animation: none; } }
+
+/* ---------- Bottom-left corner: settings and bug report ---------- */
+.lb-corner { position: absolute; z-index: 60; left: 20px; bottom: 20px; display: flex; gap: 10px; align-items: center; }
+.lb-corner .lb-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 56px; min-width: 56px; padding: 0 12px; border: 0; cursor: pointer;
+  font: 800 16px/1 var(--m-font); color: #fff; background-color: var(--m-surface);
+  --px-n: 5px; clip-path: var(--px-5);
+  --px-ol: rgba(0, 0, 0, 0.4); --px-ol-w: 2px;
+  --px-ft: var(--px-btn-t); --px-ft-w: 2px; --px-fb: var(--px-btn-b); --px-fb-w: 4px;
+  transition: transform 90ms var(--m-ease-smooth);
+}
+.lb-corner .lb-btn:hover { background-color: var(--m-surface-2); transform: translateY(-2px); }
+.lb-corner .lb-btn:active { transform: translateY(1px); }
+.lb-corner .lb-btn > svg { width: 24px; height: 24px; color: #fff; }
+.lb-corner .lb-btn > svg.lb-px { width: 38px; height: 35px; display: block; }
+@media (min-width: 1800px) { .lb-corner { zoom: 1.3; } }
+@media (min-width: 2400px) { .lb-corner { zoom: 1.6; } }
