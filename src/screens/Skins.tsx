@@ -105,7 +105,8 @@ import { TurtleCatalog } from '../components/shop/TurtleCatalog'
 import { BRAND } from '../lib/branding'
 import { FittingBar } from '../components/character/FittingBar'
 import { Nametag, nametagSpot } from '../components/character/Nametag'
-import { TurtleWardrobe, useTurtleSections } from '../components/character/TurtleWardrobe'
+import { TurtleWardrobe, TURTLE_WARDROBE_CATEGORIES } from '../components/character/TurtleWardrobe'
+import { CATEGORY_ICON, useCategoryLabel } from '../components/shop/turtle/ShopCard'
 import { useTurtleCharacter } from '../lib/useTurtleCharacter'
 import { useTurtleWardrobe, categoryOf } from '../state/turtleWardrobe'
 import { Outfits } from '../components/character/Outfits'
@@ -762,7 +763,8 @@ export function Skins({ on }: { on: boolean }) {
   // Раздел гардероба и выбранный в нём чип. Чип помнится за разделом: вернулся
   // в «Голову» — снова на тех же шляпах.
   // Гардероб открывается с первого раздела — «Образы» (владелец 24.09.2026).
-  const [section, setSection] = useState('looks')
+  // Turtle opens on the client's first catalogue category; the looks are Millida's.
+  const [section, setSection] = useState(BRAND.services ? 'looks' : 'tc:head')
   /** Блоки магазина в разделе «Магазин» — то же состояние и покупки, что у экрана магазина. */
   const shop = useShop(on && section === 'shop')
   const [chipBy, setChipBy] = useState<Record<string, string>>({})
@@ -3126,17 +3128,20 @@ export function Skins({ on }: { on: boolean }) {
   /* Разделы — одноцветными значками, как в Essential Mod (владелец 23.09.2026,
      «возьми с Essential для кнопок разделов косметики»). Картинки вещей в
      кнопках раздела сливались в пёструю полосу. */
-  const turtleSections = useTurtleSections()
   const turtleWardrobe = useTurtleWardrobe()
+  const categoryLabel = useCategoryLabel()
   useTurtleCharacter(viewerRef, BRAND.services ? 0 : engineReady, fitViewer)
-  const sectionList: Section[] = [
+  // Turtle: the skin, then exactly the client's catalogue (Head … Emotes).
+  const sectionList: Section[] = !BRAND.services ? [
+    { key: 'skin', name: t('Скины'), icon: 'ws-skin' },
+    ...TURTLE_WARDROBE_CATEGORIES.map((category) => ({ key: 'tc:' + category, name: categoryLabel(category), icon: CATEGORY_ICON[category] })),
+  ] : [
     { key: 'looks', name: t('Образы'), icon: 'ws-looks' },
     // Магазин рядом с вещами (06.10.2026, «один в один»): те же блоки, что в магазине.
 
     { key: 'skin', name: t('Скины'), icon: 'ws-skin' },
     { key: 'cape', name: t('Плащи'), icon: 'ws-cape', alert: readyRewards > 0 },
     ...sections.map((sec) => ({ key: sec.key, name: sec.name, icon: 'ws-' + sec.key })),
-    ...turtleSections.filter(category => !['head','body','back','cape','capes','pet','emote'].includes(category.key.slice(3))),
   ]
 
   const pickSection = (key: string) => {
@@ -3155,7 +3160,9 @@ export function Skins({ on }: { on: boolean }) {
   }
 
   const chipList =
-    section === 'skin'
+    !BRAND.services && section !== 'skin'
+      ? []
+      : section === 'skin'
       ? SKIN_CHIPS().map((c) => ({ key: c.key, name: c.name }))
       : section === 'cape'
         ? earnedCapes.length
@@ -3677,7 +3684,8 @@ export function Skins({ on }: { on: boolean }) {
                 worn,
                 !!currentCape,
               )
-              if (!BRAND.services && section !== 'skin' && section !== 'looks') return <div className="ch-tools">{ownFilter}</div>
+              // Turtle shows only owned items, so there is no All/Mine switch.
+              if (!BRAND.services && section !== 'skin' && section !== 'looks') return null
               const cosmetic = section !== 'skin' && section !== 'looks'
               if (!off && !cosmetic) return null
               return (
@@ -3713,7 +3721,7 @@ export function Skins({ on }: { on: boolean }) {
 
           {plusJoy ? <PlusCelebration items={plus?.items ?? 100} onDone={endPlusJoy} /> : null}
 
-          {!BRAND.services && section !== 'skin' && section !== 'looks' ? <TurtleWardrobe category={section.startsWith('tc:') ? section.slice(3) : section} slots={sectionDef?.chips.find(chip => chip.key === chipKey)?.slots} ownedOnly={own === 'mine'} /> : section === 'skin' ? (
+          {!BRAND.services && section !== 'skin' && section !== 'looks' ? <TurtleWardrobe category={section.startsWith('tc:') ? section.slice(3) : section} /> : section === 'skin' ? (
             skinPanel
           ) : section === 'looks' ? (
             <>

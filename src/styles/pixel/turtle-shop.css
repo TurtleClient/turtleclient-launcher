@@ -95,7 +95,7 @@
     linear-gradient(180deg, color-mix(in srgb, var(--ts-tone, var(--m-rarity-common)) 14%, var(--m-inset)), var(--m-inset));
   box-shadow: inset 0 -3px 0 var(--ts-tone, var(--m-rarity-common));
 }
-.ts-art canvas, .ts-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.ts-art img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
 .ts-art img { padding: 12%; }
 .ts-art > svg.icon { width: 34%; height: 34%; color: var(--ts-tone, var(--m-fg-muted)); }
 .ts-grid.is-wide .ts-art { aspect-ratio: 16 / 8; }

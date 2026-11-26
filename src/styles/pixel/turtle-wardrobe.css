@@ -1,0 +1,21 @@
+/* Turtle wardrobe (src/components/character/TurtleWardrobe.tsx): owned items and the emote wheel. */
+.tw { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tw-alert { margin: 0; }
+.tw-wheel { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--m-surface-2); --px-n: 5px; clip-path: var(--px-5); }
+.tw-wheel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.tw-wheel-head h3 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 900; }
+.tw-wheel-head h3 > svg.icon { width: 16px; height: 16px; color: var(--m-accent); }
+.tw-wheel-head .faint-note { margin: 0; font-size: 12px; }
+.tw-slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.tw-slot { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto auto; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 6px; background: var(--m-inset); --px-n: 4px; clip-path: var(--px-5); }
+.tw-slot-n { display: grid; place-items: center; width: 22px; height: 22px; font-size: 12px; font-weight: 900; background: var(--m-accent); color: var(--px-on-accent); --px-n: 3px; clip-path: var(--px-5); }
+.tw-slot-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tw-mini { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; cursor: pointer; background: none; color: var(--m-fg-muted); }
+.tw-mini:hover:not(:disabled) { color: var(--m-fg); background: var(--m-raised); }
+.tw-mini:disabled { opacity: 0.35; cursor: default; }
+.tw-mini > svg.icon { width: 14px; height: 14px; }
+.tw-left { transform: scaleX(-1); }
+.tw-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 32px 16px; text-align: center; }
+.tw-empty p { margin: 0; color: var(--m-fg-muted); }
+.tw-empty-ic { width: 40px; height: 40px; color: var(--m-fg-faint); }
+.tw-art-ic { width: 40%; height: 40%; color: var(--m-fg-muted); }

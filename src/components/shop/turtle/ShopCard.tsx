@@ -1,27 +1,52 @@
 import { intlTag, useT } from '../../../i18n'
-import { giftable } from '../../../lib/turtleShop'
-import type { CartLine, ShopEntry } from '../../../lib/turtleShop'
+import { categoryOf, giftable } from '../../../lib/turtleShop'
+import type { CartLine, ShopEntry, TurtleCategory } from '../../../lib/turtleShop'
 import { Icon } from '../../Icon'
 import { ShopArt } from './ShopArt'
 import { Shells } from './ShellIcon'
 
+/** Singular label on a card: what this one item is. */
 export function useKindLabel() {
   const t = useT()
   return (line: Pick<CartLine, 'kind' | 'slot' | 'bundle'>): string => {
-    if (line.bundle) return t('Turtle: bundle')
-    switch (line.kind) {
+    switch (categoryOf(line)) {
+      case 'bundle': return t('Turtle: bundle')
       case 'cape': return t('Turtle: cape')
       case 'aura': return t('Turtle: aura')
       case 'trail': return t('Turtle: trail')
       case 'emote': return t('Turtle: emote')
       case 'pet': return t('Turtle: pet')
+      case 'back': return t('Turtle: back item')
+      case 'torso': return t('Turtle: torso item')
+      case 'shoulder': return t('Turtle: shoulder item')
+      case 'name_tag': return t('Turtle: name tag effect')
+      default: return t('Turtle: head item')
     }
-    if (line.slot === 'back') return t('Turtle: back item')
-    if (line.slot === 'torso' || line.slot === 'shoulder') return t('Turtle: body item')
-    if (line.slot === 'name_tag') return t('Turtle: name tag effect')
-    return t('Turtle: head item')
   }
 }
+
+/** The client's catalogue names, shared by the shop filter and the wardrobe sections. */
+export function useCategoryLabel() {
+  const t = useT()
+  return (category: TurtleCategory): string => {
+    switch (category) {
+      case 'back': return t('Turtle: back')
+      case 'torso': return t('Turtle: torso')
+      case 'shoulder': return t('Turtle: shoulder')
+      case 'cape': return t('Turtle: capes')
+      case 'name_tag': return t('Turtle: name tag')
+      case 'aura': return t('Turtle: auras')
+      case 'trail': return t('Turtle: trails')
+      case 'pet': return t('Turtle: pets')
+      case 'emote': return t('Turtle: emotes')
+      case 'bundle': return t('Turtle: bundles')
+      default: return t('Turtle: head')
+    }
+  }
+}
+
+/** Pixel icon names (without the `i-` prefix) per catalogue category. */
+export const CATEGORY_ICON: Record<TurtleCategory, string> = { head: 'hat', back: 'wings', torso: 'shirt', shoulder: 'body', cape: 'cape', name_tag: 'edit', aura: 'sparkle', trail: 'flame', pet: 'paw', emote: 'hand', bundle: 'box' }
 
 export function useRarityLabel() {
   const t = useT()

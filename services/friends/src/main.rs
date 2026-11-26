@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use uuid::Uuid;
+mod playtime;
 mod wardrobe;
 #[cfg(test)]
 mod wardrobe_tests;
@@ -278,7 +279,7 @@ async fn remove(
     service.commit(next)?;
     Ok(StatusCode::NO_CONTENT)
 }
-fn router(state: Shared) -> Router {
+fn router(state: Shared, clock: playtime::Clock) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/session", post(login))
@@ -288,6 +289,7 @@ fn router(state: Shared) -> Router {
         .route("/friends/:uuid", axum::routing::delete(remove))
         .layer(DefaultBodyLimit::max(1024))
         .with_state(state.clone())
+        .merge(playtime::router(state.clone(), clock))
         .merge(wardrobe::router(state))
 }
 #[tokio::main]
@@ -306,8 +308,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         seen: HashMap::new(),
         file,
     }));
+    // Playtime totals beside the friends file (Ocean reads friends.json, so it stays untouched).
+    let clock = playtime::Clock::load(PathBuf::from(
+        std::env::var("TURTLE_PLAYTIME_FILE").unwrap_or_else(|_| "playtime.json".into()),
+    ))?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await?;
-    axum::serve(listener, router(state)).await?;
+    axum::serve(listener, router(state, clock)).await?;
     Ok(())
 }
 
@@ -352,8 +358,9 @@ mod tests {
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
+        let clock = playtime::Clock::load(directory.join("playtime.json")).unwrap();
         let server =
-            tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
+            tokio::spawn(async move { axum::serve(listener, router(state, clock)).await.unwrap() });
         let client = reqwest::Client::new();
         assert_eq!(
             client

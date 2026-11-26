@@ -55,6 +55,9 @@ import { TIERS_SECTION_PUBLIC } from '../lib/tiersSection'
 import { liveInterval } from '../lib/liveInterval'
 import { clientUpdateLabel, useTurtleRuntime } from '../lib/useTurtleRuntime'
 import { openSettings } from '../state/ui'
+import { BRAND } from '../lib/branding'
+import { useAccounts } from '../state/accounts'
+import { refreshTurtlePlaytime, useTurtlePlaytime } from '../state/turtlePlaytime'
 
 /* Разделы на лобби, как в Brawl Stars: у каждого ровно один вход (владелец
    23.09.2026: «всё дублируется»). Режимы и каталог открывает плашка «Что
@@ -154,7 +157,7 @@ export function Play({ on }: { on: boolean }) {
   // «Что играем сегодня» — только то, что человек выбрал сам (в каталоге
   // режимов или запуском). Ничего не подставляем: «Играть» без выбора ведёт
   // в каталог, а не молча запускает сборку дня (владелец 23.09.2026).
-  const tier = playTier(playStats.total_seconds)
+
   // Первый день (игра ни разу не запускалась): одна сборка и одна «Играть»
   // вместо каталога — сразу наш сервер или свежая ванилла (ресёрч 06.10.2026:
   // половина ушедших в день установки так и не запустила игру).
@@ -164,6 +167,22 @@ export function Play({ on }: { on: boolean }) {
   const nativeSelected = !chosen
   const native = useTurtleRuntime(on && nativeSelected)
   const nativeUpdating=nativeSelected && ['checking','downloading','installing'].includes(native.clientUpdate?.phase || '')
+  // TurtleClient playtime comes from the Turtle service (the launcher's heartbeats while the client runs).
+  const turtleAccount = useAccounts((s) => {
+    const account = s.list.find((a) => a.id === s.active)
+    return account?.kind === 'microsoft' ? account.id : null
+  })
+  const turtleTime = useTurtlePlaytime()
+  useEffect(() => {
+    if (on && !BRAND.services) void refreshTurtlePlaytime(turtleAccount)
+  }, [on, turtleAccount, native.running])
+  useEffect(() => {
+    if (!on || BRAND.services || !native.running) return
+    const timer = setInterval(() => void refreshTurtlePlaytime(turtleAccount), 60_000)
+    return () => clearInterval(timer)
+  }, [on, turtleAccount, native.running])
+  const playedSeconds = BRAND.services ? playStats.total_seconds : turtleTime.accountId === turtleAccount ? turtleTime.seconds ?? 0 : 0
+  const tier = playTier(playedSeconds)
   const mode: LobbyMode | null =
     chosen ?? (dayZero ? (anarchyPromo ? anarchyMode() : { kind: 'version', version: '1.21.11' }) : null)
   useFirstHourChest(on, playStats.total_seconds)
@@ -293,7 +312,9 @@ export function Play({ on }: { on: boolean }) {
         </div>
         <div className="lobby-row">
           {/* OneBlock в лобби убран (владелец 24.09.2026, 07:26: «пока убираем»). */}
-          {/* Плашка ведёт в каталог режимов, «Играть» — только запуск. */}
+          {/* Плашка ведёт в каталог режимов, «Играть» — только запуск.
+              TurtleClient: only the Play button, centred (owner, 26.11.2026). */}
+          {BRAND.services ? (
           <button
             className="lobby-mode"
             data-sound="open"
@@ -334,6 +355,7 @@ export function Play({ on }: { on: boolean }) {
               </span>
             </span>
           </button>
+          ) : null}
           {/* Кнопка запуска стоит на постоянном месте и видна на первом кадре:
               наведение её не вызывает и не прячет (антипаттерн Modrinth). */}
           <div className="play-col">
@@ -405,6 +427,7 @@ export function Play({ on }: { on: boolean }) {
                   ) : (
                     <>
                       {t('Играть')}
+                      {!BRAND.services && !nativeSelected ? <span className="play-what">{modeTitle}</span> : null}
                       {/* Наиграно по всем сборкам — всегда, с нуля, со ступенью
                           (владелец 06.10.2026: часы — повод похвастаться). */}
                       <span className="play-hours">
@@ -414,7 +437,7 @@ export function Play({ on }: { on: boolean }) {
                             {tier.reached}
                           </span>
                         ) : null}
-                        <b>{playHoursLabel(playStats.total_seconds)}</b>
+                        <b>{playHoursLabel(playedSeconds)}</b>
                         {tier.next ? (
                           <span className="play-hours-bar" aria-hidden="true">
                             <span style={{ width: Math.round(tier.progress * 100) + '%' }} />

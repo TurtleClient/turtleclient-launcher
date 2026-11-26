@@ -45,7 +45,10 @@ describe('shop listing', () => {
   })
   test('categories map wardrobe slots and kinds', () => {
     expect(categoryOf(lineOf(wings))).toBe('back')
-    expect(categoryOf({ kind: 'model', slot: 'torso' })).toBe('body')
+    expect(categoryOf({ kind: 'model', slot: 'torso' })).toBe('torso')
+    expect(categoryOf({ kind: 'model', slot: 'shoulder' })).toBe('shoulder')
+    expect(categoryOf({ kind: 'model', slot: 'name_tag' })).toBe('name_tag')
+    expect(categoryOf({ kind: 'team_cape', slot: 'cape' })).toBe('cape')
     expect(categoryOf(bundleLine('husky_bundle'))).toBe('bundle')
     expect(categoryOf(lineOf(dance))).toBe('emote')
   })

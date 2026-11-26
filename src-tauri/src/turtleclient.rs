@@ -181,7 +181,65 @@ pub async fn turtle_launch(account_id: Option<String>, nick: String) -> Result<(
     {
         return Err("turtle_nickname_invalid".into());
     }
-    crate::commands::blocking(move || spawn(&config, &nick, identity)).await?
+    crate::commands::blocking(move || spawn(&config, &nick, identity)).await??;
+    track_playtime(id);
+    Ok(())
+}
+
+/// One playtime heartbeat to the Turtle service with the account's friends session.
+async fn playtime_request(account_id: &str, playing: Option<bool>) -> Result<Value, String> {
+    let mut retried = false;
+    loop {
+        turtle_friends_connect(account_id.to_string()).await?;
+        let token = sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(account_id)
+            .map(|s| s.token.clone())
+            .ok_or("turtle_friends_connect_required")?;
+        let result = match playing {
+            Some(playing) => request(reqwest::Method::POST, "/social/playtime", Some(json!({"playing":playing})), Some(&token)).await,
+            None => request(reqwest::Method::GET, "/social/playtime", None, Some(&token)).await,
+        };
+        if result.as_ref().err().is_some_and(|e| e == "turtle_http_401") && !retried {
+            sessions().lock().unwrap_or_else(|e| e.into_inner()).remove(account_id);
+            retried = true;
+            continue;
+        }
+        return result;
+    }
+}
+/// While the native client runs, the server credits the time between beats (one a minute);
+/// the beat after it exits closes the session. One tracker per launcher process.
+fn track_playtime(account_id: String) {
+    static TRACKING: OnceLock<Mutex<bool>> = OnceLock::new();
+    {
+        let mut busy = TRACKING.get_or_init(|| Mutex::new(false)).lock().unwrap_or_else(|e| e.into_inner());
+        if *busy {
+            return;
+        }
+        *busy = true;
+    }
+    tauri::async_runtime::spawn(async move {
+        let _ = playtime_request(&account_id, Some(true)).await;
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let playing = running();
+            let _ = playtime_request(&account_id, Some(playing)).await;
+            if !playing {
+                break;
+            }
+        }
+        *TRACKING.get_or_init(|| Mutex::new(false)).lock().unwrap_or_else(|e| e.into_inner()) = false;
+    });
+}
+/// The player's TurtleClient playtime as the server keeps it.
+#[tauri::command]
+pub async fn turtle_playtime(account_id: String) -> Result<Value, String> {
+    if engine::mc_token(&account_id).is_none() {
+        return Err("turtle_login_required".into());
+    }
+    playtime_request(&account_id, None).await
 }
 fn spawn(config: &Settings, nick: &str, identity: Option<Value>) -> Result<(), String> {
     use std::io::Write;
@@ -644,6 +702,139 @@ fn shop_product(value: Option<Value>) -> Result<Value, String> {
     }
     Ok(json!({"kind":kind,"id":id,"hash":hash,"owner":owner}))
 }
+/// Ocean's wardrobe change: up to three models per body slot, one aura, trail and name tag.
+fn shop_equip(slot: Option<String>, hash: Option<String>, equipped: Option<bool>) -> Result<Value, String> {
+    let slot = slot.unwrap_or_default();
+    if !matches!(
+        slot.as_str(),
+        "head" | "back" | "torso" | "shoulder" | "name_tag" | "aura" | "trail" | "team_cape"
+    ) || hash.as_deref().is_some_and(|h| !hex(h, 64))
+        || (equipped.is_some() && hash.is_none())
+        || (slot == "team_cape" && equipped.is_none())
+    {
+        return Err("turtle_action_invalid".into());
+    }
+    Ok(json!({"slot":slot,"hash":hash,"equipped":equipped}))
+}
+/// MiniMe: `null` puts it away; otherwise the player it copies, its mode and personality.
+fn shop_pet(pet: Option<Value>) -> Result<Value, String> {
+    let Some(pet) = pet.filter(|p| !p.is_null()) else {
+        return Ok(Value::Null);
+    };
+    let uuid = pet["uuid"].as_str().unwrap_or_default();
+    let name = pet["name"].as_str().unwrap_or_default();
+    let mode = pet["mode"].as_u64().unwrap_or(0);
+    let personality = pet["personality"].as_u64().unwrap_or(0);
+    if !valid_uuid(uuid)
+        || !(3..=16).contains(&name.len())
+        || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        || mode > 2
+        || personality > 3
+    {
+        return Err("turtle_action_invalid".into());
+    }
+    Ok(json!({"uuid":uuid,"name":name,"mode":mode,"personality":personality}))
+}
+/// Preview data for every cosmetic kind: an emote or pet clip, or a published shop asset
+/// (a Turtle model or a custom emote as JSON, a cape as an image data URL).
+#[tauri::command]
+pub async fn turtle_preview_data(clip: Option<String>, asset: Option<String>) -> Result<Value, String> {
+    if let Some(clip) = clip {
+        if clip.is_empty()
+            || clip.len() > 64
+            || !clip
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        {
+            return Err("turtle_action_invalid".into());
+        }
+        return request(reqwest::Method::GET, &format!("/previews/{clip}.json"), None, None).await;
+    }
+    use base64::Engine as _;
+    let hash = asset.filter(|h| hex(h, 64)).ok_or("turtle_action_invalid")?;
+    let mut response = engine::client()
+        .get(format!("{BASE}/api/shop/asset/{hash}"))
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|_| "turtle_service_unavailable")?;
+    if !response.status().is_success() {
+        return Err(format!("turtle_http_{}", response.status().as_u16()));
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "turtle_service_unavailable")?
+    {
+        if bytes.len() + chunk.len() > 8 * 1024 * 1024 {
+            return Err("turtle_response_invalid".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let image = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else {
+        None
+    };
+    if let Some(mime) = image {
+        return Ok(json!({"image": format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes))}));
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "turtle_response_invalid")?;
+    Ok(json!({"json": value}))
+}
+fn valid_favorites(list: &[String]) -> bool {
+    list.len() <= 64
+        && list.iter().enumerate().all(|(i, id)| {
+            !id.is_empty()
+                && id.len() <= 64
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+                && !list[..i].contains(id)
+        })
+}
+/// The emote wheel lives in the client's own `config/turtleclient.json` (`emote_favorites`).
+/// The launcher reads it, and writes only that key while the client is closed, so a running
+/// game cannot overwrite the change when it saves its settings.
+#[tauri::command]
+pub async fn turtle_emote_wheel(favorites: Option<Vec<String>>) -> Result<Value, String> {
+    crate::commands::blocking(move || {
+        let file = PathBuf::from(settings().game_dir).join("config").join("turtleclient.json");
+        let mut config: Value = match std::fs::read(&file) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| "turtle_client_config_invalid")?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err("turtle_client_config_missing".to_string())
+            }
+            Err(_) => return Err("turtle_client_config_invalid".into()),
+        };
+        if !config.is_object() {
+            return Err("turtle_client_config_invalid".into());
+        }
+        if let Some(list) = favorites {
+            if !valid_favorites(&list) {
+                return Err("turtle_action_invalid".into());
+            }
+            if running() {
+                return Err("turtle_already_running".into());
+            }
+            config["emote_favorites"] = json!(list);
+            let bytes = serde_json::to_vec_pretty(&config).map_err(|_| "turtle_client_config_invalid")?;
+            let tmp = file.with_extension("json.launcher");
+            std::fs::write(&tmp, bytes)
+                .and_then(|_| std::fs::rename(&tmp, &file))
+                .map_err(|_| "turtle_client_config_invalid")?;
+        }
+        let favorites = config["emote_favorites"]
+            .as_array()
+            .map(|rows| rows.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect::<Vec<_>>())
+            .unwrap_or_default();
+        Ok(json!({"favorites":favorites,"running":running()}))
+    })
+    .await?
+}
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn turtle_shop(
@@ -655,9 +846,21 @@ pub async fn turtle_shop(
     name: Option<String>,
     accept: Option<bool>,
     agreed: Option<u32>,
+    slot: Option<String>,
+    hash: Option<String>,
+    equipped: Option<bool>,
+    pet: Option<Value>,
 ) -> Result<Value, String> {
     if engine::mc_token(&account_id).is_none() {
         return Err("turtle_login_required".into());
+    }
+    if action == "equip" {
+        let body = shop_equip(slot, hash, equipped)?;
+        return ocean(&account_id, reqwest::Method::POST, "/api/social/shop/equip", Some(body)).await;
+    }
+    if action == "pet" {
+        let body = shop_pet(pet)?;
+        return ocean(&account_id, reqwest::Method::POST, "/api/social/pet", Some(body)).await;
     }
     let peer = peer.unwrap_or_default();
     let id = id.unwrap_or_default();
@@ -810,6 +1013,19 @@ mod tests {
         ] {
             assert_eq!(shop_product(Some(bad)), Err("turtle_action_invalid".into()));
         }
+        let hash = "b".repeat(64);
+        assert_eq!(shop_equip(Some("back".into()), Some(hash.clone()), Some(true)).unwrap(), json!({"slot":"back","hash":hash,"equipped":true}));
+        assert_eq!(shop_equip(Some("aura".into()), None, None).unwrap()["hash"], Value::Null);
+        assert!(shop_equip(Some("emote".into()), Some(hash.clone()), Some(true)).is_err());
+        assert!(shop_equip(Some("head".into()), None, Some(true)).is_err());
+        assert!(shop_equip(Some("team_cape".into()), Some(hash.clone()), None).is_err());
+        assert_eq!(shop_pet(None).unwrap(), Value::Null);
+        assert_eq!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle_1","mode":1,"personality":2,"x":1}))).unwrap(), json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle_1","mode":1,"personality":2}));
+        assert!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"no spaces","mode":0,"personality":0}))).is_err());
+        assert!(shop_pet(Some(json!({"uuid":"00000000-0000-0000-0000-000000000001","name":"Turtle","mode":3,"personality":0}))).is_err());
+        assert!(valid_favorites(&["wave".into(), "spooky_dance".into()]));
+        assert!(!valid_favorites(&["wave".into(), "wave".into()]));
+        assert!(!valid_favorites(&["../x".into()]));
         assert!(valid_uuid("00000000-0000-0000-0000-000000000001"));
         assert!(!valid_uuid("000000000000000000000000000000001"));
         assert!(!valid_uuid("00000000-0000-0000-0000-00000000000g"));

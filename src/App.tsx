@@ -418,8 +418,11 @@ export function App() {
     if (!logged || !hasTauri()) return
     let live = true
     let stop: (() => void) | undefined
+    let stopShop: (() => void) | undefined
     void import('./state/turtleFriends').then(module => { if (live) stop = module.watchTurtleFriends() })
-    return () => { live = false; stop?.() }
+    // Ocean inventory app-wide: Home and the wardrobe wear what was bought and equipped.
+    void import('./state/turtleShop').then(module => { if (live) stopShop = module.watchTurtleShop() })
+    return () => { live = false; stop?.(); stopShop?.() }
   }, [logged])
   const screen = useUi((s) => s.screen)
   const navPending = useUi((s) => s.navPending)

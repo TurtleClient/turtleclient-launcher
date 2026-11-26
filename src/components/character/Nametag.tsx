@@ -12,7 +12,9 @@ import { turtleTagColor } from '../../lib/turtleTag'
 export function Nametag({ nick, at, own=false }: { nick: string; at: { x: number; y: number } | null; own?:boolean }) {
   const wardrobe=useTurtleWardrobe()
   const active=useAccounts(state=>state.active)
-  const model=own && wardrobe.accountId===active ? Object.values(wardrobe.models).find(model=>model.slot==='name_tag') : undefined
+  // The worn name tag effect: from Ocean's inventory, or from the older wardrobe until it answers.
+  const mine=own && ((!!wardrobe.snapshot && wardrobe.accountId===active) || wardrobe.oceanAccount===active)
+  const model=mine ? Object.values(wardrobe.models).find(model=>model.slot==='name_tag') : undefined
   const name=own && wardrobe.accountId===active ? wardrobe.snapshot?.player.name || nick : nick
   const [time,setTime]=useState(Date.now())
   useEffect(()=>{

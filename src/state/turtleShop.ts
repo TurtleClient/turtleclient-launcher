@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { turtle } from '../lib/turtleclient'
 import { addLine, cartSummary, giftLabel, giftable, parseCart, productOf, shopError } from '../lib/turtleShop'
-import type { CartLine, GiftQuote, GiftRow, ShopInventory } from '../lib/turtleShop'
+import type { CartLine, GiftQuote, GiftRow, ShopInventory, TurtlePet } from '../lib/turtleShop'
+import { useAccounts } from './accounts'
 
 /** Result of one checkout line: bought, gifted, skipped (already owned) or failed with a shop text. */
 export interface CheckoutResult {
@@ -80,6 +81,60 @@ export async function refreshShop() {
     if (current === generation) useTurtleShop.setState({ error: shopError(e) })
   } finally {
     if (current === generation) useTurtleShop.setState({ loading: false })
+  }
+}
+
+/**
+ * Keeps Ocean's inventory for the active Microsoft account loaded app-wide: Home and the
+ * wardrobe show what the player owns and wears even before the shop was opened.
+ */
+export function watchTurtleShop() {
+  const select = () => {
+    const { list, active } = useAccounts.getState()
+    const account = list.find(a => a.id === active) || list[0]
+    selectShopAccount(account?.kind === 'microsoft' ? account.id : null)
+  }
+  const unsubscribe = useAccounts.subscribe(select)
+  select()
+  const timer = setInterval(() => {
+    if (!document.hidden) void refreshShop()
+  }, 120_000)
+  return () => {
+    unsubscribe()
+    clearInterval(timer)
+  }
+}
+
+/**
+ * Wear or take off an owned model, aura or trail. Body slots hold up to three models;
+ * aura, trail and name tag one each (Ocean replaces the previous one).
+ */
+export async function wearShopItem(slot: string, hash: string | null, equipped?: boolean): Promise<string> {
+  const current = generation
+  useTurtleShop.setState({ busy: 'wear:' + (hash || slot) })
+  try {
+    await call('equip', { slot, hash, equipped })
+    if (current === generation) await refreshShop()
+    return ''
+  } catch (e) {
+    return String(e).includes('turtle_http_409') ? 'Turtle: at most three items can be worn on one body part.' : shopError(e)
+  } finally {
+    if (current === generation) useTurtleShop.setState({ busy: null })
+  }
+}
+
+/** MiniMe follows the player as a small copy of them; `null` puts it away. */
+export async function setShopPet(pet: TurtlePet | null): Promise<string> {
+  const current = generation
+  useTurtleShop.setState({ busy: 'pet' })
+  try {
+    await call('pet', { pet })
+    if (current === generation) await refreshShop()
+    return ''
+  } catch (e) {
+    return shopError(e)
+  } finally {
+    if (current === generation) useTurtleShop.setState({ busy: null })
   }
 }
 

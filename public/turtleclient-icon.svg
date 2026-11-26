@@ -1,1 +1,60 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128"><rect x="4" y="4" width="120" height="120" rx="24" fill="#101f18"/><g shape-rendering="crispEdges"><path d="M36 24h40v8h12v16h20v24H88v24H76v8H36v-8H24V36h12z" fill="#223b2b"/><path d="M40 20h32v8h12v16h20v24H84v24H72v8H40v-8H28V32h12z" fill="#8bd36a"/><path d="M40 32h32v8h8v40h-8v8H40v-8h-8V40h8z" fill="#477a3e"/><path d="M44 40h24v8h8v24h-8v8H44v-8h-8V48h8z" fill="#64aa50"/><path d="M48 44h16v24H48z" fill="#85c667"/><path d="M88 48h8v8h-8z" fill="#14251c"/><path d="M32 24h12v12H32zm0 60h12v12H32zm32-60h12v12H64zm0 60h12v12H64z" fill="#a4df80"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512">
+  <title>TurtleClient</title>
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a9f5c"/>
+      <stop offset="1" stop-color="#1c6a3c"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5cc47e"/>
+      <stop offset="1" stop-color="#2f8a51"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c6f58e"/>
+      <stop offset="1" stop-color="#86d65c"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7da7f"/>
+      <stop offset="1" stop-color="#d79f3d"/>
+    </linearGradient>
+  </defs>
+  <!-- Badge: the turtle's own shell as a rounded hexagon with a golden rim -->
+  <path d="M256 12c9 0 17 2 25 7l176 101c16 9 25 26 25 44v184c0 18-9 35-25 44L281 493c-8 5-16 7-25 7s-17-2-25-7L55 392c-16-9-25-26-25-44V164c0-18 9-35 25-44L231 19c8-5 16-7 25-7z" fill="#0c2414"/>
+  <path d="M256 34c5 0 10 1 15 4l168 97c9 5 15 15 15 26v190c0 11-6 21-15 26L271 474c-5 3-10 4-15 4s-10-1-15-4L73 377c-9-5-15-15-15-26V161c0-11 6-21 15-26l168-97c5-3 10-4 15-4z" fill="url(#rim)"/>
+  <path d="M256 54c4 0 7 1 10 3l156 90c6 4 10 10 10 18v182c0 8-4 14-10 18L266 455c-3 2-6 3-10 3s-7-1-10-3L90 365c-6-4-10-10-10-18V165c0-8 4-14 10-18l156-90c3-2 6-3 10-3z" fill="url(#shell)"/>
+  <!-- Shell plates above the head -->
+  <g stroke="#0f3f22" stroke-width="8" stroke-linejoin="round">
+    <path d="M256 70l44 25v50l-44 25-44-25V95z" fill="url(#plate)"/>
+    <path d="M200 102l-54 31v52l38 20 28-22v-56z" fill="url(#plate)"/>
+    <path d="M312 102l54 31v52l-38 20-28-22v-56z" fill="url(#plate)"/>
+  </g>
+  <!-- Front flippers peeking out below the head -->
+  <g stroke="#0c2414" stroke-width="12" stroke-linejoin="round">
+    <path d="M120 372c-26 10-40 34-30 52 10 16 42 12 66-6 16-12 20-30 10-42-10-10-28-12-46-4z" fill="url(#skin)"/>
+    <path d="M392 372c26 10 40 34 30 52-10 16-42 12-66-6-16-12-20-30-10-42 10-10 28-12 46-4z" fill="url(#skin)"/>
+  </g>
+  <!-- Head -->
+  <path d="M256 168c92 0 150 60 150 132 0 74-64 128-150 128S106 374 106 300c0-72 58-132 150-132z" fill="url(#skin)" stroke="#0c2414" stroke-width="14"/>
+  <path d="M160 236c22-34 56-50 96-50s74 16 96 50c-28-14-60-20-96-20s-68 6-96 20z" fill="#e6fdbd" opacity="0.75"/>
+  <!-- Scale spots on the head -->
+  <g fill="#5fb446" opacity="0.85">
+    <path d="M256 196l14 8v16l-14 8-14-8v-16z"/>
+    <path d="M222 206l10 6v11l-10 6-10-6v-11z"/>
+    <path d="M290 206l10 6v11l-10 6-10-6v-11z"/>
+    <path d="M140 300l8 5v9l-8 5-8-5v-9z"/>
+    <path d="M372 300l8 5v9l-8 5-8-5v-9z"/>
+  </g>
+  <!-- Eyes -->
+  <ellipse cx="200" cy="292" rx="35" ry="41" fill="#0f2318"/>
+  <ellipse cx="312" cy="292" rx="35" ry="41" fill="#0f2318"/>
+  <circle cx="213" cy="274" r="13" fill="#ffffff"/>
+  <circle cx="325" cy="274" r="13" fill="#ffffff"/>
+  <circle cx="190" cy="309" r="6" fill="#ffffff" opacity="0.9"/>
+  <circle cx="302" cy="309" r="6" fill="#ffffff" opacity="0.9"/>
+  <!-- Cheeks, nostrils and a little beak smile -->
+  <ellipse cx="160" cy="344" rx="24" ry="14" fill="#ff8fa6" opacity="0.85"/>
+  <ellipse cx="352" cy="344" rx="24" ry="14" fill="#ff8fa6" opacity="0.85"/>
+  <circle cx="246" cy="328" r="4.5" fill="#2c5a2f"/>
+  <circle cx="266" cy="328" r="4.5" fill="#2c5a2f"/>
+  <path d="M222 350c10 10 22 14 34 6 12 8 24 4 34-6" fill="none" stroke="#0f2318" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

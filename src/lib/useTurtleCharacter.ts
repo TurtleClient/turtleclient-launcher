@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
+import type { Object3D } from 'three'
 import type { SkinViewEngine } from '../vendor/mine3d'
 import { useAccounts } from '../state/accounts'
 import { useTurtleWardrobe } from '../state/turtleWardrobe'
@@ -7,26 +8,52 @@ import { buildTurtleCosmetic } from './turtleGeometry'
 import { turtle } from './turtleclient'
 import { loadImg } from './skinArms'
 
+/** The engine's root anchor sits at the neck; the effects are drawn with the feet at y = 0. */
+const FEET_BELOW_NECK = 24
+
 export function useTurtleCharacter(viewer:RefObject<SkinViewEngine | null>,ready:number,onDressed?:()=>void) {
   const notify=useRef(onDressed);notify.current=onDressed
   const wardrobe=useTurtleWardrobe()
   const active=useAccounts(s=>s.active)
+  // Ocean's inventory (shop items included) or, until it answers, the older wardrobe.
+  const mine=(!!wardrobe.snapshot && wardrobe.accountId===active) || wardrobe.oceanAccount===active
+  const effectKey=mine?wardrobe.effects.map(e=>e.kind+':'+e.id).join(','):''
   useEffect(()=>{
     const engine=viewer.current
     if(!engine || !ready)return
     engine.clearCosmetics()
-    if(!wardrobe.snapshot || wardrobe.accountId!==active)return
+    if(!mine)return
     let alive=true
     const built:Awaited<ReturnType<typeof buildTurtleCosmetic>>[]=[]
+    const effects:{dispose():void}[]=[]
     void Promise.all(Object.values(wardrobe.models).filter(model=>model.slot!=='name_tag').map(model=>
       buildTurtleCosmetic(model).then(result=>{
         if(!alive){result.dispose();return}
         built.push(result)
         for(const piece of result.pieces)engine.attachCosmetic(piece.anchor,piece.object)
       }).catch(()=>{})
-    )).then(()=>{if(alive)notify.current?.()})
-    return ()=>{alive=false;engine.clearCosmetics();built.forEach(model=>model.dispose())}
-  },[ready,active,wardrobe.models,wardrobe.accountId,viewer])
+    )).then(async()=>{
+      if(!alive || !wardrobe.effects.length)return
+      // Auras and trails as on the website and in the client: drawn around the figure.
+      const {turtleAura,turtleTrail}=await import('./turtleEffects')
+      if(!alive)return
+      const started=performance.now()/1000
+      for(const worn of wardrobe.effects){
+        const effect=worn.kind==='aura'?turtleAura(worn.id):turtleTrail(worn.id)
+        effect.object.position.y=-FEET_BELOW_NECK
+        let ticking=false
+        effect.object.traverse((node:Object3D)=>{
+          if(ticking || !('isSprite' in node || 'isMesh' in node))return
+          ticking=true
+          node.onBeforeRender=()=>effect.update(performance.now()/1000-started)
+        })
+        effect.update(0)
+        engine.attachCosmetic('root',effect.object)
+        effects.push(effect)
+      }
+    }).then(()=>{if(alive)notify.current?.()})
+    return ()=>{alive=false;engine.clearCosmetics();built.forEach(model=>model.dispose());effects.forEach(effect=>effect.dispose())}
+  },[ready,active,mine,wardrobe.models,effectKey,viewer])
   useEffect(()=>{
     const engine=viewer.current
     if(!engine || !ready)return

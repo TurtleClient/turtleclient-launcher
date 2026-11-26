@@ -1,0 +1,8 @@
+/* Animated Turtle cosmetic figure (src/lib/turtlePreview.ts): fills its tile. */
+.tp { position: relative; width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; }
+.tp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 0.2s; image-rendering: auto; }
+.tp.tp-ready .tp-canvas { opacity: 1; }
+.tp-wait { width: 34%; height: 34%; max-width: 48px; max-height: 48px; color: var(--ts-tone, var(--m-fg-faint)); opacity: 0.55; transition: opacity 0.2s; }
+.tp.tp-ready .tp-wait { opacity: 0; }
+.tp.tp-failed .tp-wait { opacity: 0.9; }
+@media (prefers-reduced-motion: reduce) { .tp-canvas, .tp-wait { transition: none; } }

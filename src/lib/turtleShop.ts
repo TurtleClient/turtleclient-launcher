@@ -39,7 +39,21 @@ export interface ShopInventory {
   plus_until: number
   currency?: boolean
   rewards?: ShopRewards
+  /** Worn items as Ocean entries (no `kind`): body-slot models, the aura and the trail. */
+  equipped?: Omit<OceanItem, 'kind'>[]
+  team_cape_equipped?: boolean
+  pet?: TurtlePet | null
 }
+
+export interface TurtlePet {
+  uuid: string
+  name: string
+  mode?: number
+  personality?: number
+}
+
+/** Kind of a worn Ocean entry: its slot tells aura and trail apart from models. */
+export const wornKind = (slot: string) => (slot === 'aura' || slot === 'trail' ? slot : 'model')
 
 export interface GiftRow {
   id: string
@@ -76,7 +90,7 @@ export interface ShopEntry extends CartLine {
   endsAt: number | null
 }
 
-export type ShopCategory = 'all' | 'bundle' | 'head' | 'back' | 'body' | 'name_tag' | 'cape' | 'aura' | 'trail' | 'emote' | 'pet'
+export type ShopCategory = 'all' | TurtleCategory
 export type ShopSort = 'featured' | 'price-asc' | 'price-desc' | 'name'
 
 export const CART_LIMIT = 24
@@ -141,15 +155,18 @@ export function isOwned(inv: ShopInventory, line: CartLine): boolean {
 
 export const giftable = (line: CartLine) => !line.bundle && GIFT_KINDS.has(line.kind)
 
-export function categoryOf(line: Pick<CartLine, 'kind' | 'slot' | 'bundle'>): ShopCategory {
-  if (line.bundle) return 'bundle'
+/** The client's catalogue, in its order: models by body slot, then the other kinds. */
+export const TURTLE_CATEGORIES = ['head', 'back', 'torso', 'shoulder', 'cape', 'name_tag', 'aura', 'trail', 'pet', 'emote', 'bundle'] as const
+export type TurtleCategory = (typeof TURTLE_CATEGORIES)[number]
+
+export function categoryOf(line: Pick<CartLine, 'kind' | 'slot' | 'bundle'>): TurtleCategory {
+  if (line.bundle || line.kind === 'bundle' || line.kind === 'promo_bundle') return 'bundle'
   if (line.kind === 'model') {
-    if (line.slot === 'torso' || line.slot === 'shoulder') return 'body'
-    if (line.slot === 'head' || line.slot === 'back' || line.slot === 'name_tag') return line.slot
-    return 'head'
+    return line.slot === 'back' || line.slot === 'torso' || line.slot === 'shoulder' || line.slot === 'name_tag' ? line.slot : 'head'
   }
+  if (line.kind === 'team_cape') return 'cape'
   if (line.kind === 'cape' || line.kind === 'aura' || line.kind === 'trail' || line.kind === 'emote' || line.kind === 'pet') return line.kind
-  return 'all'
+  return 'head'
 }
 
 /** Everything on sale plus the bundles Ocean quotes for this player. */

@@ -109,3 +109,40 @@ checked out item by item, because Ocean charges per product. Gifts use the price
 the player confirmed; Ocean refuses a changed price (HTTP 409) instead of charging
 more. Not enough Shells is HTTP 402. Bundles and trails cannot be gifted. Buying
 Shells with money is not part of the launcher.
+
+Shop and wardrobe use the client's catalogue categories in its order: Head, Back,
+Torso, Shoulder, Capes, Name tag, Auras, Trails, Pets, Emotes (the shop adds
+Bundles).
+
+### Wardrobe, Home and previews
+
+Ocean's inventory is the single source for what the player owns and wears. The
+wardrobe lists only owned items. Models, aura, trail and the team cape are worn
+through `POST /api/social/shop/equip` (`{slot,hash,equipped}`; up to three models
+per body slot, one aura, trail and name tag). MiniMe uses `POST /api/social/pet`.
+Bought capes keep the existing cape route. Home and the wardrobe figure show
+Ocean's `equipped` list, including shop items, aura and trail.
+
+The emote wheel is the client's own `emote_favorites` in
+`<game folder>/config/turtleclient.json`. The launcher reads it and writes only
+that key, and only while the client is closed, so the game cannot overwrite the
+new order when it saves its settings.
+
+Previews in the shop, wardrobe tiles and Home follow the Turtle website's
+renderer: the launcher's Turtle model geometry on a bendy figure, auras and
+trails, capes from `/api/shop/asset/<hash>` and emote or pet clips. The clips are
+the website's preview files, served read-only by nginx on the IP host as
+`/turtleclient/previews/<id>.json` (`[a-z0-9_]` names only). One shared WebGL
+renderer draws every visible preview.
+
+### Playtime
+
+TurtleClient playtime is kept by the Turtle service, not by the launcher. While
+the native client runs, the launcher's Rust process sends
+`POST /social/playtime {"playing":true}` with the player's service session once a
+minute and `{"playing":false}` after the client exits. Each beat credits the real
+time since the previous beat, at most 90 seconds, so the total cannot exceed
+wall-clock time. Totals are stored in `playtime.json` beside `friends.json`
+(`TURTLE_PLAYTIME_FILE` overrides it); `friends.json`, which Ocean also reads,
+is not touched. `GET /social/playtime` returns `{seconds, playing}`; Home shows it
+under Play. Time played while the launcher is closed is not counted.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { intlTag, useT } from '../../i18n'
-import { cartSummary, categoryOf, filterEntries, lineOf, shopEntries } from '../../lib/turtleShop'
+import { cartSummary, categoryOf, filterEntries, lineOf, shopEntries, TURTLE_CATEGORIES } from '../../lib/turtleShop'
 import type { CartLine, ShopCategory, ShopFilter, ShopSort } from '../../lib/turtleShop'
 import { useAccounts } from '../../state/accounts'
 import { addToCart, claimDaily, refreshShop, removeFromCart, selectShopAccount, useTurtleShop } from '../../state/turtleShop'
@@ -12,7 +12,7 @@ import { GiftDialog } from './turtle/GiftDialog'
 import { GiftInbox } from './turtle/GiftInbox'
 import { ShellIcon, Shells } from './turtle/ShellIcon'
 import { ShopArt } from './turtle/ShopArt'
-import { ShopCard, useKindLabel } from './turtle/ShopCard'
+import { CATEGORY_ICON, ShopCard, useCategoryLabel, useKindLabel } from './turtle/ShopCard'
 import { TurtleCatalog } from './TurtleCatalog'
 import '../../styles/pixel/shop2.css'
 import '../../styles/pixel/turtle-shop.css'
@@ -24,6 +24,7 @@ export function TurtleShop({ on }: { on: boolean }) {
   const t = useT()
   const locale = intlTag()
   const kind = useKindLabel()
+  const categoryLabel = useCategoryLabel()
   const { list, active } = useAccounts()
   const account = list.find(a => a.id === active) || list[0]
   const accountId = account?.kind === 'microsoft' ? account.id : null
@@ -63,18 +64,10 @@ export function TurtleShop({ on }: { on: boolean }) {
     setNotice(failure ? t(failure) : t('Turtle: daily reward claimed. Come back tomorrow.'))
   }
 
+  // Same catalogue and order as the client: Head … Emotes, Bundles.
   const categories: [ShopCategory, string, string][] = [
     ['all', 'i-grid', t('Turtle: all items')],
-    ['bundle', 'i-box', t('Turtle: bundles')],
-    ['head', 'i-hat', t('Turtle: head')],
-    ['back', 'i-wings', t('Turtle: back')],
-    ['body', 'i-shirt', t('Turtle: body')],
-    ['name_tag', 'i-edit', t('Turtle: name tags')],
-    ['cape', 'i-cape', t('Turtle: capes')],
-    ['aura', 'i-sparkle', t('Turtle: auras')],
-    ['trail', 'i-flame', t('Turtle: trails')],
-    ['emote', 'i-hand', t('Turtle: emotes')],
-    ['pet', 'i-paw', t('Turtle: pets')],
+    ...TURTLE_CATEGORIES.map(id => [id, 'i-' + CATEGORY_ICON[id], categoryLabel(id)] as [ShopCategory, string, string]),
   ]
   const present = new Set(entries.map(categoryOf))
   const tabs: [Tab, string, string, number][] = [
