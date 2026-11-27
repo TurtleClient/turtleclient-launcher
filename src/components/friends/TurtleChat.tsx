@@ -7,6 +7,7 @@ import { chatImage, openChat, samePlayer, sendChat, useTurtleSocial } from '../.
 import type { ChatMessage } from '../../state/turtleSocial'
 import { useTurtleFriends } from '../../state/turtleFriends'
 import { joinFriendWorld } from '../../lib/turtleLaunch'
+import { RANK_COLOR, friendRank, useTurtleRanks } from '../../state/turtleRanks'
 import '../../styles/pixel/turtle-home.css'
 
 function ChatImage({ id }: { id: string }) {
@@ -32,6 +33,7 @@ export default function TurtleChat() {
   const screen = useUi((s) => s.screen)
   const { open, friends, threads, me, playing } = useTurtleSocial()
   const roster = useTurtleFriends((s) => s.data.friends)
+  const ranks = useTurtleRanks()
   const [draft, setDraft] = useState('')
   const list = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
@@ -70,7 +72,7 @@ export default function TurtleChat() {
       <header className="tch-top">
         <Head nick={friend.name} size={36} />
         <span className="tch-who">
-          <b>{friend.name}</b>
+          <b style={{ color: RANK_COLOR[friendRank(ranks, friend.id)] }}>{friend.name}</b>
           <small className={playingNow ? 'is-playing' : onlineNow ? 'is-online' : ''}>
             {playingNow ? t('Turtle: playing TurtleClient') : onlineNow ? t('Turtle: online') : t('Turtle: offline')}
           </small>

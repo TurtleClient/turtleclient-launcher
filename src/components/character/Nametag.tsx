@@ -3,6 +3,10 @@ import { useEffect, useState } from 'react'
 import { useTurtleWardrobe } from '../../state/turtleWardrobe'
 import { useAccounts } from '../../state/accounts'
 import { turtleTagColor } from '../../lib/turtleTag'
+import { BRAND } from '../../lib/branding'
+import { useTurtleShop } from '../../state/turtleShop'
+import { rankFromInventory, rankIcon, useTurtleRanks } from '../../state/turtleRanks'
+import type { TurtleRank } from '../../state/turtleRanks'
 
 /**
  * Ник над головой, как в Minecraft: пиксельный шрифт, полупрозрачная тёмная
@@ -16,6 +20,11 @@ export function Nametag({ nick, at, own=false }: { nick: string; at: { x: number
   const mine=own && ((!!wardrobe.snapshot && wardrobe.accountId===active) || wardrobe.oceanAccount===active)
   const model=mine ? Object.values(wardrobe.models).find(model=>model.slot==='name_tag') : undefined
   const name=own && wardrobe.accountId===active ? wardrobe.snapshot?.player.name || nick : nick
+  // The player's TurtleClient rank icon before their own name (owner, 27.11.2026).
+  const ranked=useTurtleRanks(state=>state.accountId===active ? state.me : null)
+  const inventory=useTurtleShop(state=>state.accountId===active ? state.inventory : null)
+  const microsoft=useAccounts(state=>state.list.find(a=>a.id===state.active)?.kind==='microsoft')
+  const rank:TurtleRank|null=!own || BRAND.services || !microsoft ? null : ranked ?? (inventory ? rankFromInventory(inventory.role,inventory.plus_until) : null)
   const [time,setTime]=useState(Date.now())
   useEffect(()=>{
     if(!model?.tag?.animation || !at)return
@@ -27,6 +36,7 @@ export function Nametag({ nick, at, own=false }: { nick: string; at: { x: number
   if (!name || !at) return null
   return (
     <span className="mc-nametag" style={{ left: at.x + 'px', top: at.y + 'px',...(model?.tag?{borderBottom:'2px solid '+turtleTagColor(model.tag.animation,model.tag.line,time)}:{}) }}>
+      {rank ? <img className="mc-nametag-rank" src={rankIcon(rank)} alt="" width={18} height={18} /> : null}
       {model?.tag ? [...name].map((char,index)=><span key={index} style={{color:turtleTagColor(model.tag!.animation,model.tag!.line,time,index,name.length)}}>{char}</span>) : name}
     </span>
   )

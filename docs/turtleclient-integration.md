@@ -204,3 +204,20 @@ after the name. Emote previews draw what the client draws: the DJ deck for `dj`
 effects of Demon Ascension, Angel Ascension and Husky Howl (a port of the client's
 `demon.rs` and `bundle_effects.rs`). Hovering an emote in the wardrobe plays it on
 the player's figure with what they wear.
+
+### Ranks
+
+The client ranks have one turtle head each in `public/turtle/ranks` (SVG): Admin red,
+Mod orange, Premium gold,
+Partner violet, Translator dark green, Player normal. The player's icon stands before
+their own name above the figure; friends with a rank get their name in its colour in
+the friends list, the Friends page and the chat.
+
+`GET /social/ranks` (Turtle service, friends only) returns `{me, friends}`. The
+service reads Ocean's files read-only: the team roster
+`/var/lib/turtleclient/ocean/data/turtle-team.json` (`TURTLE_TEAM_FILE`) and the
+Plus wallets in `data/turtle-shop/state.json` (`TURTLE_SHOP_STATE_FILE`), again at
+most every 30 seconds. A team role wins over Premium; Ocean's Creator role is shown
+as Partner. Translator is recognised in the roster, but Ocean and the client do not
+know that role yet. Without the service the player's own rank comes from Ocean's
+inventory (`role`, `plus_until`).

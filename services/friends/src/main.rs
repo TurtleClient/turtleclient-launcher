@@ -16,6 +16,7 @@ use std::{
 use uuid::Uuid;
 mod gift_notes;
 mod playtime;
+mod ranks;
 mod wardrobe;
 #[cfg(test)]
 mod wardrobe_tests;
@@ -280,7 +281,7 @@ async fn remove(
     service.commit(next)?;
     Ok(StatusCode::NO_CONTENT)
 }
-fn router(state: Shared, clock: playtime::Clock, notes: gift_notes::Notes) -> Router {
+fn router(state: Shared, clock: playtime::Clock, notes: gift_notes::Notes, ranks: ranks::Ranks) -> Router {
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/session", post(login))
@@ -292,6 +293,7 @@ fn router(state: Shared, clock: playtime::Clock, notes: gift_notes::Notes) -> Ro
         .with_state(state.clone())
         .merge(playtime::router(state.clone(), clock))
         .merge(gift_notes::router(state.clone(), notes))
+        .merge(ranks::router(state.clone(), ranks))
         .merge(wardrobe::router(state))
 }
 #[tokio::main]
@@ -318,8 +320,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let notes = gift_notes::Notes::load(PathBuf::from(
         std::env::var("TURTLE_GIFT_NOTES_FILE").unwrap_or_else(|_| "gift-notes.json".into()),
     ))?;
+    // Ranks are read from Ocean's own files, never written.
+    let ranks = ranks::Ranks::new(
+        PathBuf::from(std::env::var("TURTLE_TEAM_FILE").unwrap_or_else(|_| "/var/lib/turtleclient/ocean/data/turtle-team.json".into())),
+        PathBuf::from(std::env::var("TURTLE_SHOP_STATE_FILE").unwrap_or_else(|_| "/var/lib/turtleclient/ocean/data/turtle-shop/state.json".into())),
+    );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001").await?;
-    axum::serve(listener, router(state, clock, notes)).await?;
+    axum::serve(listener, router(state, clock, notes, ranks)).await?;
     Ok(())
 }
 
@@ -366,8 +373,10 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let clock = playtime::Clock::load(directory.join("playtime.json")).unwrap();
         let notes = gift_notes::Notes::load(directory.join("gift-notes.json")).unwrap();
+        std::fs::write(directory.join("team.json"), format!("{{\"{a}\":{{\"name\":\"alice\",\"role\":\"mod\"}}}}")).unwrap();
+        let ranks = ranks::Ranks::new(directory.join("team.json"), directory.join("no-shop.json"));
         let server =
-            tokio::spawn(async move { axum::serve(listener, router(state, clock, notes)).await.unwrap() });
+            tokio::spawn(async move { axum::serve(listener, router(state, clock, notes, ranks)).await.unwrap() });
         let client = reqwest::Client::new();
         assert_eq!(
             client
@@ -449,6 +458,11 @@ mod tests {
         assert_eq!(bob["playing"], serde_json::json!([a]));
         let carol: serde_json::Value = client.get(format!("{base}/playtime/friends")).bearer_auth("carol-session").send().await.unwrap().json().await.unwrap();
         assert_eq!(carol["playing"], serde_json::json!([]));
+        // Ranks: a friend's rank from the team roster; the player's own is null without one.
+        let bob: serde_json::Value = client.get(format!("{base}/ranks")).bearer_auth("bob-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(bob, serde_json::json!({"me":null,"friends":{a.to_string():"mod"}}));
+        let alice: serde_json::Value = client.get(format!("{base}/ranks")).bearer_auth("alice-session").send().await.unwrap().json().await.unwrap();
+        assert_eq!(alice["me"], "mod");
         assert_eq!(
             client
                 .delete(format!("{base}/friends/{b}"))

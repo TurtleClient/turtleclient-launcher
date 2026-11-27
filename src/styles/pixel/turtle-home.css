@@ -39,6 +39,8 @@
 .thf-row.is-online .thf-body small { color: var(--m-accent); }
 .thf-row.is-playing .thf-body small { color: #7fd4ff; }
 .thf-row.is-offline .thf-body b { color: rgb(255 255 255 / 0.6); }
+/* A ranked friend keeps the rank colour offline, only quieter. */
+.thf-row.is-offline .thf-body b[style*="color"] { opacity: 0.7; }
 .thf-chat { flex: none; width: 16px !important; height: 16px !important; opacity: 0; transition: opacity var(--m-t-fast); }
 .thf-row:hover .thf-chat, .thf-row.on .thf-chat { opacity: 0.8; }
 .thf-unread { flex: none; min-width: 22px; height: 20px; display: grid; place-items: center; padding: 0 5px; font: 900 11px/1 var(--m-font); color: #fff; background: #e8202a; }

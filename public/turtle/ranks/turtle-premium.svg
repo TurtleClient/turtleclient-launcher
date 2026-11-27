@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="88 130 336 336">
+  <title>TurtleClient Premium</title>
+  <defs><linearGradient id="skin-premium" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffeea6"/><stop offset="1" stop-color="#e3aa2b"/></linearGradient></defs>
+  <path d="M256 168c92 0 150 60 150 132 0 74-64 128-150 128S106 374 106 300c0-72 58-132 150-132z" fill="url(#skin-premium)" stroke="#3a2804" stroke-width="14"/>
+  <path d="M160 236c22-34 56-50 96-50s74 16 96 50c-28-14-60-20-96-20s-68 6-96 20z" fill="#fff8d8" opacity="0.75"/>
+  <g fill="#c78d1c" opacity="0.85">
+    <path d="M256 196l14 8v16l-14 8-14-8v-16z"/>
+    <path d="M222 206l10 6v11l-10 6-10-6v-11z"/>
+    <path d="M290 206l10 6v11l-10 6-10-6v-11z"/>
+    <path d="M140 300l8 5v9l-8 5-8-5v-9z"/>
+    <path d="M372 300l8 5v9l-8 5-8-5v-9z"/>
+  </g>
+  <ellipse cx="200" cy="292" rx="35" ry="41" fill="#0f2318"/>
+  <ellipse cx="312" cy="292" rx="35" ry="41" fill="#0f2318"/>
+  <circle cx="213" cy="274" r="13" fill="#ffffff"/>
+  <circle cx="325" cy="274" r="13" fill="#ffffff"/>
+  <circle cx="190" cy="309" r="6" fill="#ffffff" opacity="0.9"/>
+  <circle cx="302" cy="309" r="6" fill="#ffffff" opacity="0.9"/>
+  <ellipse cx="160" cy="344" rx="24" ry="14" fill="#ff8fa6" opacity="0.8"/>
+  <ellipse cx="352" cy="344" rx="24" ry="14" fill="#ff8fa6" opacity="0.8"/>
+  <circle cx="246" cy="328" r="4.5" fill="#7d5810"/>
+  <circle cx="266" cy="328" r="4.5" fill="#7d5810"/>
+  <path d="M222 350c10 10 22 14 34 6 12 8 24 4 34-6" fill="none" stroke="#0f2318" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

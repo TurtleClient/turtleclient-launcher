@@ -43,6 +43,8 @@ export interface ShopInventory {
   equipped?: Omit<OceanItem, 'kind'>[]
   team_cape_equipped?: boolean
   pet?: TurtlePet | null
+  /** The player's TurtleClient team role (admin, mod, creator), if any. */
+  role?: string | null
 }
 
 export interface TurtlePet {

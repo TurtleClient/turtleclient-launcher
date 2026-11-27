@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { t } from '../i18n'
 import { serviceError, turtle } from '../lib/turtleclient'
 import { useAccounts } from './accounts'
+import { useTurtleFriends } from './turtleFriends'
+import { refreshRanks } from './turtleRanks'
 import { showToast } from './ui'
 
 /**
@@ -167,6 +169,7 @@ export function watchTurtleSocial() {
   let timer: ReturnType<typeof setTimeout> | undefined
   let lastSync = Date.now()
   let lastPlaying = Date.now()
+  let lastRanks = Date.now()
   const select = () => {
     const { list, active } = useAccounts.getState()
     const account = list.find((a) => a.id === active)
@@ -175,6 +178,7 @@ export function watchTurtleSocial() {
     lastUnread = new Map()
     seenInvites.clear()
     useTurtleSocial.setState(empty(accountId))
+    void refreshRanks(accountId)
     if (accountId) {
       void sync()
       void syncPlaying()
@@ -190,15 +194,23 @@ export function watchTurtleSocial() {
       if (state.open && visible) void loadThread(state.open)
       if (at - lastSync >= (visible ? 9500 : 29500)) { lastSync = at; void sync() }
       if (at - lastPlaying >= 29500) { lastPlaying = at; void syncPlaying() }
+      if (at - lastRanks >= 59500) { lastRanks = at; void refreshRanks(state.accountId) }
     }
     timer = setTimeout(loop, state.open ? 4000 : 5000)
   }
   const unsubscribe = useAccounts.subscribe(select)
+  // Ranks come through the friends session: ask again once it is connected or the list changes.
+  const unsubscribeFriends = useTurtleFriends.subscribe((now, before) => {
+    const accountId = useTurtleSocial.getState().accountId
+    if (accountId && now.accountId === accountId && now.connected && (!before.connected || now.data.friends.length !== before.data.friends.length)) void refreshRanks(accountId)
+  })
   select()
   timer = setTimeout(loop, 5000)
   return () => {
     unsubscribe()
+    unsubscribeFriends()
     clearTimeout(timer)
     useTurtleSocial.setState(empty(null))
+    void refreshRanks(null)
   }
 }

@@ -709,6 +709,8 @@ pub async fn turtle_friends(
     }
     let result = match action.as_str() {
         "list" => request(reqwest::Method::GET, "/social/friends", None, Some(&token)).await,
+        // Client ranks of the player and their friends (Admin, Mod, Partner, Translator, Premium).
+        "ranks" => request(reqwest::Method::GET, "/social/ranks", None, Some(&token)).await,
         "request" => {
             request(
                 reqwest::Method::POST,

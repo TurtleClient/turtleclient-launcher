@@ -6,6 +6,7 @@ import { setScreen } from '../../state/ui'
 import { useTurtleFriends } from '../../state/turtleFriends'
 import { dismissInvite, openChat, samePlayer, useTurtleSocial } from '../../state/turtleSocial'
 import { joinFriendWorld } from '../../lib/turtleLaunch'
+import { RANK_COLOR, friendRank, useTurtleRanks } from '../../state/turtleRanks'
 import '../../styles/pixel/turtle-home.css'
 
 type Status = 'playing' | 'online' | 'offline'
@@ -20,6 +21,7 @@ export function TurtleHomeFriends() {
   const t = useT()
   const roster = useTurtleFriends()
   const social = useTurtleSocial()
+  const ranks = useTurtleRanks()
   const rows = useMemo<Row[]>(() => {
     const list = roster.connected ? roster.data.friends : []
     const byId = new Map<string, Row>()
@@ -63,7 +65,8 @@ export function TurtleHomeFriends() {
         <i className="thf-dot" aria-hidden="true" />
       </span>
       <span className="thf-body">
-        <b>{r.name}</b>
+        {/* A friend's rank colours the name, as in the client (owner, 27.11.2026). */}
+        <b style={{ color: RANK_COLOR[friendRank(ranks, r.id)] }}>{r.name}</b>
         <small>{r.status === 'playing' ? t('Turtle: playing TurtleClient') : r.status === 'online' ? t('Turtle: online') : t('Turtle: offline')}</small>
       </span>
       {r.unread ? <span className="thf-unread">{r.unread > 99 ? '99+' : r.unread}</span> : <Icon id="i-msg" className="icon thf-chat" />}

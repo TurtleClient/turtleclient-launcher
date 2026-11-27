@@ -5,6 +5,7 @@ import { uiConfirm } from '../../state/confirm'
 import { serviceError, turtle } from '../../lib/turtleclient'
 import type { Friend } from '../../lib/turtleclient'
 import { turtleFriendsConnection, useTurtleFriends } from '../../state/turtleFriends'
+import { RANK_COLOR, friendRank, useTurtleRanks } from '../../state/turtleRanks'
 import { Icon } from '../Icon'
 import { Head } from '../Head'
 import '../../styles/pixel/friends.css'
@@ -15,6 +16,7 @@ export function TurtleFriends({ on }: { on: boolean }) {
   const { list, active } = useAccounts()
   const account = list.find(a => a.id === active)
   const connection = useTurtleFriends()
+  const ranks = useTurtleRanks()
   const connected = connection.accountId === account?.id && connection.connected
   const data = connection.data
   const [busy, setBusy] = useState(false)
@@ -48,7 +50,7 @@ export function TurtleFriends({ on }: { on: boolean }) {
   function row(friend: Friend, kind: 'friend' | 'incoming' | 'outgoing') {
     return <div className="fr-row" key={friend.uuid}>
       <span className="fr-ava"><Head nick={friend.name} size={40} /></span>
-      <span className="fr-body"><span className="fr-nick">{friend.name}</span><span className={'fr-status' + (friend.online ? ' on' : '')}>{kind === 'friend' ? t(friend.online ? 'Turtle: online' : 'Turtle: offline') : t(kind === 'incoming' ? 'Turtle: friend request' : 'Turtle: awaiting acceptance')}</span></span>
+      <span className="fr-body"><span className="fr-nick" style={kind === 'friend' ? { color: RANK_COLOR[friendRank(ranks, friend.uuid)] } : undefined}>{friend.name}</span><span className={'fr-status' + (friend.online ? ' on' : '')}>{kind === 'friend' ? t(friend.online ? 'Turtle: online' : 'Turtle: offline') : t(kind === 'incoming' ? 'Turtle: friend request' : 'Turtle: awaiting acceptance')}</span></span>
       <span className="fr-acts">{kind === 'incoming' ? <><button className="btn md primary" disabled={busy} onClick={() => void perform('accept', friend.uuid)}>{t('Turtle: accept')}</button><button className="btn md secondary" disabled={busy} onClick={() => void perform('reject', friend.uuid)}>{t('Turtle: decline')}</button></> : <button className="btn sm secondary" disabled={busy} onClick={() => void (kind === 'friend' ? remove(friend.uuid) : perform('remove', friend.uuid))}>{t(kind === 'friend' ? 'Turtle: remove friend' : 'Turtle: cancel request')}</button>}</span>
     </div>
   }
