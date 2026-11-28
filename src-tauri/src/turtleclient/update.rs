@@ -1,5 +1,5 @@
 //! Signed, first-party native client releases. Never contains Minecraft assets.
-use super::{engine, settings, settings_file, BASE};
+use super::{engine, settings_file, BASE};
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -180,10 +180,17 @@ fn intact(root: &Path, installed: &Installed) -> bool {
         bytes.len() as u64 <= MAX_ARCHIVE && hash(&bytes) == installed.release.exe_sha256
     })
 }
+pub(super) fn installed_executable() -> Option<String> {
+    let root = root();
+    let installed = installed_at(&root)?;
+    let path = executable(&root, &installed);
+    path.is_file().then(|| path.to_string_lossy().into_owned())
+}
 fn activate(root: &Path, installed: &Installed) -> Result<(), String> {
-    let mut config = settings();
-    config.executable = executable(root, installed).to_string_lossy().into_owned();
-    write_json(&settings_file(), &config)
+    super::config_store::update(&settings_file(), &super::defaults(), |config| {
+        config.executable = executable(root, installed).to_string_lossy().into_owned();
+        Ok(())
+    }).map(|_| ())
 }
 fn write_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     let result = (|| -> std::io::Result<()> {

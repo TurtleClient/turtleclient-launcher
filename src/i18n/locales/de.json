@@ -6714,5 +6714,10 @@
   "Turtle: message to {name}": "Nachricht an {name}",
   "Turtle: send": "Senden",
   "Turtle: stopping client…": "Client wird beendet…",
-  "Turtle: stop client": "Client beenden"
+  "Turtle: stop client": "Client beenden",
+  "Turtle: the saved configuration is damaged. Open Game settings and save your resource and world folders again.": "Die gespeicherte Konfiguration ist beschädigt. Öffne die Spieleinstellungen und speichere Ressourcen- und Weltordner erneut.",
+  "Turtle: configuration could not be saved. Check write access to the launcher folder and try again.": "Die Konfiguration konnte nicht gespeichert werden. Prüfe die Schreibrechte für den Launcher-Ordner und versuche es erneut.",
+  "Turtle: Minecraft account verification is temporarily unavailable. Check your connection and try again.": "Die Überprüfung deines Minecraft-Kontos ist gerade nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
+  "Turtle: the client could not be started. Check whether Windows security blocked it and try again.": "Der Client konnte nicht gestartet werden. Prüfe, ob die Windows-Sicherheit ihn blockiert hat, und versuche es erneut.",
+  "Turtle: start files could not be prepared. Check write access to your game folder.": "Die Startdateien konnten nicht vorbereitet werden. Prüfe die Schreibrechte für deinen Spielordner."
 }

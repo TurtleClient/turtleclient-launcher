@@ -1,0 +1,59 @@
+name: Native runtime settings tests
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/src/turtleclient/**'
+      - 'src-tauri/src/turtleclient.rs'
+      - 'src/lib/turtleSettings*'
+      - 'src/state/turtlePlaytime*'
+permissions:
+  contents: read
+concurrency:
+  group: native-settings-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  settings:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: native-settings-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            native-settings-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            windows-release-${{ hashFiles('src-tauri/Cargo.lock', 'installer/bootstrap/Cargo.lock') }}-
+            windows-release-${{ hashFiles('src-tauri/Cargo.lock') }}-
+      - run: bun install --frozen-lockfile
+      - name: Verify settings form and cached playtime
+        run: |
+          bun run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun scripts/test.mjs turtleSettings.test turtlePlaytime.test updatePolicy.test
+      - name: Prepare verified runtime components
+        run: |
+          pwsh -NoProfile -File scripts/prepare-account-provider.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File scripts/prepare-resources.ps1
+      - name: Verify atomic settings and recovery in fresh temporary homes
+        run: |
+          $taskRoot=Join-Path $env:RUNNER_TEMP ('turtle-settings-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $taskRoot | Out-Null
+          foreach($taskKey in @('HORIZON_HOME','HORIZON_LAUNCHER_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME','HORIZON_LAUNCHER_TRASH','HORIZON_LAUNCHER_CLIPBOARD','HORIZON_LAUNCHER_DESKTOP')) {
+            $taskValue=Join-Path $taskRoot $taskKey
+            New-Item -ItemType Directory -Path $taskValue | Out-Null
+            [Environment]::SetEnvironmentVariable($taskKey,$taskValue,'Process')
+          }
+          $env:TEMP=$taskRoot; $env:TMP=$taskRoot
+          $env:HORIZON_NO_AUDIO='1'; $env:HORIZON_LAUNCHER_NO_SELF_UPDATE='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib turtleclient::config_store::tests:: -- --test-threads=1

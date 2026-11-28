@@ -17,6 +17,13 @@ export function turtle<T>(command: string, args?: Record<string, unknown>): Prom
 export const emptyFriends = (): FriendList => ({ friends: [], incoming: [], outgoing: [] })
 export function serviceError(error: unknown): string {
   const code = String(error)
+  if (code.includes('settings_corrupt')) return 'Turtle: the saved configuration is damaged. Open Game settings and save your resource and world folders again.'
+  if (code.includes('settings_failed')) return 'Turtle: configuration could not be saved. Check write access to the launcher folder and try again.'
+  if (code.includes('profile_unavailable')) return 'Turtle: Minecraft account verification is temporarily unavailable. Check your connection and try again.'
+  if (code.includes('horizon_auth_failed') || code.includes('horizon_auth_relogin')) return 'Turtle: sign in with a Microsoft Minecraft account.'
+  if (code.includes('horizon_auth_missing')) return 'The sign-in component is missing or damaged. Update or reinstall TurtleClient Launcher.'
+  if (code.includes('start_failed')) return 'Turtle: the client could not be started. Check whether Windows security blocked it and try again.'
+  if (code.includes('log_failed') || code.includes('session_failed')) return 'Turtle: start files could not be prepared. Check write access to your game folder.'
   if (code.includes('turtle_update_')) return 'Turtle: client update failed. Check your connection and try again.'
   if (code.includes('resources_prepare_failed')) return 'Turtle: resource preparation failed. Check your connection or choose your Modrinth folder in Game settings.'
   if (code.includes('resources_busy')) return 'Turtle: Minecraft resources are already being prepared.'
