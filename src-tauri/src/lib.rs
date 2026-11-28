@@ -259,6 +259,9 @@ pub fn run() {
             // An update that was downloaded and checked earlier goes in now, before the window is shown (update_start.rs).
             update_start::run(app.handle(), shown_after_update);
             tauri::async_runtime::spawn(async {
+                // The client download comes from the same server as friends and the shop. Let
+                // Home sign in and load first; Play still checks and installs before launching.
+                tokio::time::sleep(std::time::Duration::from_secs(45)).await;
                 let _ = turtleclient::update::check(true).await;
             });
             engine::arm_selfheal(app.handle());
