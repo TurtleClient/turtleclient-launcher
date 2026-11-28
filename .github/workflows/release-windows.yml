@@ -40,7 +40,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pwsh -NoProfile -File scripts/prepare-resources.ps1
       - name: Verify updater and connection behavior
-        run: bun scripts/test.mjs updater.test updatePolicy.test remoteUi.test friendsConnection.test turtle-release.test onboarding.test turtleGeometry.test turtleTag.test turtleWardrobeRules.test minecraftSkinCache.test textureSource.test lobbyLook.test deviceTier.test gpuLite.test slowLite.test serviceLoginError.test
+        run: bun scripts/test.mjs updater.test updatePolicy.test remoteUi.test friendsConnection.test turtle-release.test onboarding.test turtleGeometry.test turtleTag.test turtleWardrobeRules.test minecraftSkinCache.test textureSource.test lobbyLook.test deviceTier.test gpuLite.test slowLite.test serviceLoginError.test turtleSettings.test turtlePlaytime.test
       - name: Set monotonically increasing release version
         id: version
         run: bun scripts/turtle-release.mjs prepare
@@ -93,6 +93,8 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib turtleclient::update::tests
       - name: Verify automatic Minecraft preparation
         run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib turtleclient::resources::tests
+      - name: Verify native configuration recovery
+        run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib turtleclient::config_store::tests
       - name: Verify bundled sign-in and account handoff
         run: cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol --locked --lib engine::accounts::horizon::tests
       - name: Validate and publish the complete update atomically

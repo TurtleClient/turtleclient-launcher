@@ -221,8 +221,10 @@ pub(super) async fn ensure(mut config: Settings) -> Result<Settings, String> {
     *phase().lock().unwrap_or_else(|e| e.into_inner()) = "preparing_resources";
     let result = crate::commands::blocking(move || {
         config.resources = prepare(&config)?;
-        super::save_settings(&config)?;
-        Ok::<_, String>(config)
+        super::config_store::update(&super::settings_file(), &super::defaults(), |current| {
+            current.resources = config.resources;
+            Ok(())
+        })
     })
     .await
     .and_then(|v| v);

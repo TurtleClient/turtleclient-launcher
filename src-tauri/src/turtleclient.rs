@@ -13,13 +13,17 @@ use std::{
 const BASE: &str = "https://45.133.9.162/turtleclient";
 pub(crate) mod update;
 mod resources;
+mod config_store;
 #[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     executable: String,
     resources: String,
     game_dir: String,
     #[serde(default)]
     minecraft_source: String,
+    #[serde(flatten)]
+    extra: std::collections::BTreeMap<String, Value>,
 }
 fn settings_file() -> PathBuf {
     engine::data_dir().join("turtleclient.json")
@@ -42,6 +46,7 @@ fn defaults() -> Settings {
     }
     let executable = std::env::var("TURTLE_CLIENT")
         .ok()
+        .or_else(update::installed_executable)
         .or_else(|| {
             roots.iter().find_map(|root| {
                 [
@@ -57,6 +62,7 @@ fn defaults() -> Settings {
         .unwrap_or_default();
     let resources = std::env::var("TURTLE_RESOURCES").ok().or_else(resources::discover).unwrap_or_default();
     Settings {
+        extra: Default::default(),
         executable,
         resources,
         minecraft_source: resources::default_source(),
@@ -67,10 +73,7 @@ fn defaults() -> Settings {
     }
 }
 fn settings() -> Settings {
-    let mut config: Settings = std::fs::read(settings_file())
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_else(defaults);
+    let mut config = config_store::load(&settings_file(), &defaults()).unwrap_or_else(|_| defaults());
     if config.resources.is_empty() {config.resources=resources::discover().unwrap_or_default();}
     if config.minecraft_source.is_empty() {config.minecraft_source=resources::default_source();}
     config
@@ -103,17 +106,23 @@ pub async fn turtle_status() -> Result<Value, String> {
     crate::commands::blocking(|| json!({"settings":settings(),"running":running(),"update":update::status(),"preparation":resources::status()})).await
 }
 #[tauri::command]
-pub async fn turtle_configure(settings: Settings) -> Result<(), String> {
+pub async fn turtle_configure(settings: Settings, fields: Option<Vec<String>>) -> Result<(), String> {
     crate::commands::blocking(move || {
-        validate(&settings)?;
-        save_settings(&settings)
+        save_settings(&settings, fields.as_deref())
     })
     .await?
 }
-fn save_settings(settings: &Settings) -> Result<(),String> {
-    std::fs::create_dir_all(engine::data_dir()).map_err(|_|"turtle_settings_failed")?;
-    std::fs::write(settings_file(),serde_json::to_vec(settings).map_err(|_|"turtle_settings_failed")?)
-        .map_err(|_|"turtle_settings_failed".into())
+fn save_settings(settings: &Settings, fields: Option<&[String]>) -> Result<(),String> {
+    config_store::configure(&settings_file(), &defaults(), |current| {
+        // The updater owns the executable; a stale settings form cannot select
+        // the previous release again. User-selected world/resource paths stay theirs.
+        if current.executable.is_empty() {current.executable.clone_from(&settings.executable);}
+        let changed = |field: &str| fields.is_none_or(|list| list.iter().any(|f| f == field));
+        if changed("resources") {current.resources.clone_from(&settings.resources);}
+        if changed("game_dir") {current.game_dir.clone_from(&settings.game_dir);}
+        if changed("minecraft_source") {current.minecraft_source.clone_from(&settings.minecraft_source);}
+        validate(current)
+    }).map(|_| ())
 }
 fn validate(settings: &Settings) -> Result<(), String> {
     let exe = Path::new(&settings.executable);
@@ -194,7 +203,12 @@ async fn profile(account: &str) -> Result<(Value, String), String> {
     Ok(fact)
 }
 async fn renewed_profile(account: &str) -> Result<(Value, String), String> {
-    if engine::ms_session_refresh(account).await?["status"] != "ok" {
+    let refreshed = engine::ms_session_refresh(account).await.map_err(|error| {
+        if error.contains("horizon_auth_") || error.contains("minecraft_app_registration_required") || error.contains("minecraft_login_forbidden") {
+            error
+        } else { "turtle_profile_unavailable".into() }
+    })?;
+    if refreshed["status"] != "ok" {
         return Err("turtle_login_required".into());
     }
     let token = engine::mc_token(account).ok_or("turtle_login_required")?;
@@ -1174,6 +1188,7 @@ mod tests {
             .unwrap()
             .success());
         let config = Settings {
+            extra: Default::default(),
             minecraft_source: String::new(),
             executable: exe.to_string_lossy().into_owned(),
             resources: home.join("resources").to_string_lossy().into_owned(),

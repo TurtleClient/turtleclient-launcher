@@ -14,7 +14,7 @@ export async function launchTurtleClient(join?: string): Promise<boolean> {
   try { await turtle('turtle_launch', { accountId: account.id, nick: account.nick, join: join || null }); return true }
   catch (e) {
     showToast(t(serviceError(e)), 'error')
-    if (/executable|resources|game_dir/.test(String(e))) openSettings('game')
+    if (/executable|resources|game_dir|settings_corrupt/.test(String(e))) openSettings('game')
     return false
   } finally { starting = false }
 }
