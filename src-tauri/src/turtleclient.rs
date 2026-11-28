@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -137,7 +137,63 @@ fn validate(settings: &Settings) -> Result<(), String> {
     }
     Ok(())
 }
+/// How long a confirmed Minecraft profile and its token are reused. Minecraft tokens live
+/// for a day; renewing them on every sign-in started the account provider several times in a
+/// row at launcher start and left friends and the shop waiting behind each other.
+const PROFILE_FRESH: Duration = Duration::from_secs(10 * 60);
+struct ProfileFact {
+    profile: Value,
+    token: String,
+    at: Instant,
+}
+fn profiles() -> &'static Mutex<HashMap<String, ProfileFact>> {
+    static S: OnceLock<Mutex<HashMap<String, ProfileFact>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+type AccountLocks = OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>;
+/// One lock per account, so that parallel callers wait for the first sign-in and reuse it.
+fn account_lock(table: &'static AccountLocks, account: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let locks = table.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = locks.lock().unwrap_or_else(|e| e.into_inner());
+    map.entry(account.to_string()).or_default().clone()
+}
+fn fresh_profile(account: &str) -> Option<(Value, String)> {
+    let current = engine::mc_token(account)?;
+    let profiles = profiles().lock().unwrap_or_else(|e| e.into_inner());
+    profiles
+        .get(account)
+        .filter(|f| f.at.elapsed() < PROFILE_FRESH && f.token == current)
+        .map(|f| (f.profile.clone(), f.token.clone()))
+}
+/// Drops the reused profile after a service rejected its token, so the next call renews it.
+fn forget_profile(account: &str) {
+    profiles()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(account);
+}
 async fn profile(account: &str) -> Result<(Value, String), String> {
+    static LOCKS: AccountLocks = OnceLock::new();
+    if let Some(fact) = fresh_profile(account) {
+        return Ok(fact);
+    }
+    let lock = account_lock(&LOCKS, account);
+    let _guard = lock.lock().await;
+    if let Some(fact) = fresh_profile(account) {
+        return Ok(fact);
+    }
+    let fact = renewed_profile(account).await?;
+    profiles().lock().unwrap_or_else(|e| e.into_inner()).insert(
+        account.to_string(),
+        ProfileFact {
+            profile: fact.0.clone(),
+            token: fact.1.clone(),
+            at: Instant::now(),
+        },
+    );
+    Ok(fact)
+}
+async fn renewed_profile(account: &str) -> Result<(Value, String), String> {
     if engine::ms_session_refresh(account).await?["status"] != "ok" {
         return Err("turtle_login_required".into());
     }
@@ -538,37 +594,18 @@ pub async fn turtle_wardrobe(
     slot: Option<String>,
     item: Option<String>,
 ) -> Result<Value, String> {
-    turtle_friends_connect(account_id.clone()).await?;
-    let token = {
-        sessions()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&account_id)
-            .map(|s| s.token.clone())
-            .ok_or("turtle_friends_connect_required")?
-    };
-    let result = if let Some(slot) = slot {
-        request(
-            reqwest::Method::POST,
-            "/social/wardrobe",
-            Some(json!({"slot":slot,"item":item})),
-            Some(&token),
-        )
-        .await
-    } else {
-        request(reqwest::Method::GET, "/social/wardrobe", None, Some(&token)).await
-    };
-    if result
-        .as_ref()
-        .err()
-        .is_some_and(|e| e == "turtle_http_401")
-    {
-        sessions()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&account_id);
+    match slot {
+        Some(slot) => {
+            friends_call(
+                &account_id,
+                reqwest::Method::POST,
+                "/social/wardrobe",
+                Some(json!({"slot":slot,"item":item})),
+            )
+            .await
+        }
+        None => friends_call(&account_id, reqwest::Method::GET, "/social/wardrobe", None).await,
     }
-    result
 }
 #[tauri::command]
 pub async fn turtle_model(id: String, hash: String) -> Result<Value, String> {
@@ -653,12 +690,22 @@ pub async fn turtle_friends_connect(account_id: String) -> Result<Value, String>
     if engine::mc_token(&account_id).is_none() {
         return Err("turtle_login_required".into());
     }
-    if sessions()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(&account_id)
-        .is_some_and(|s| s.expires > Instant::now())
-    {
+    static LOCKS: AccountLocks = OnceLock::new();
+    let connected = || {
+        sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&account_id)
+            .is_some_and(|s| s.expires > Instant::now())
+    };
+    if connected() {
+        return Ok(json!({"connected":true}));
+    }
+    // Friends, ranks, playtime and gift notes all connect at launcher start. Only the first
+    // signs in; the others wait here and reuse its session (the service also limits sign-ins).
+    let lock = account_lock(&LOCKS, &account_id);
+    let _guard = lock.lock().await;
+    if connected() {
         return Ok(json!({"connected":true}));
     }
     let (_, minecraft_token) = profile(&account_id).await?;
@@ -668,7 +715,12 @@ pub async fn turtle_friends_connect(account_id: String) -> Result<Value, String>
         None,
         Some(&minecraft_token),
     )
-    .await?;
+    .await
+    .inspect_err(|e| {
+        if e == "turtle_http_401" {
+            forget_profile(&account_id);
+        }
+    })?;
     let token = answer["session"]
         .as_str()
         .filter(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -693,64 +745,36 @@ pub async fn turtle_friends(
     if engine::mc_token(&account_id).is_none() {
         return Err("turtle_login_required".into());
     }
-    let token = {
-        let mut sessions = sessions().lock().unwrap_or_else(|e| e.into_inner());
-        sessions.retain(|_, s| s.expires > Instant::now());
-        sessions
-            .get(&account_id)
-            .map(|s| s.token.clone())
-            .ok_or("turtle_friends_connect_required")?
-    };
     let uuid = uuid.unwrap_or_default();
     if matches!(action.as_str(), "accept" | "reject" | "remove")
         && (uuid.len() != 36 || !uuid.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
     {
         return Err("turtle_response_invalid".into());
     }
-    let result = match action.as_str() {
-        "list" => request(reqwest::Method::GET, "/social/friends", None, Some(&token)).await,
+    let (method, path, body) = match action.as_str() {
+        "list" => (reqwest::Method::GET, "/social/friends".to_string(), None),
         // Client ranks of the player and their friends (Admin, Mod, Partner, Translator, Premium).
-        "ranks" => request(reqwest::Method::GET, "/social/ranks", None, Some(&token)).await,
-        "request" => {
-            request(
-                reqwest::Method::POST,
-                "/social/friends/request",
-                Some(json!({"name":name.unwrap_or_default()})),
-                Some(&token),
-            )
-            .await
-        }
-        "accept" | "reject" => {
-            request(
-                reqwest::Method::POST,
-                "/social/friends/decision",
-                Some(json!({"uuid":uuid,"accept":action=="accept"})),
-                Some(&token),
-            )
-            .await
-        }
-        "remove" => {
-            request(
-                reqwest::Method::DELETE,
-                &format!("/social/friends/{uuid}"),
-                None,
-                Some(&token),
-            )
-            .await
-        }
-        _ => Err("turtle_action_invalid".into()),
+        "ranks" => (reqwest::Method::GET, "/social/ranks".to_string(), None),
+        "request" => (
+            reqwest::Method::POST,
+            "/social/friends/request".to_string(),
+            Some(json!({"name":name.unwrap_or_default()})),
+        ),
+        "accept" | "reject" => (
+            reqwest::Method::POST,
+            "/social/friends/decision".to_string(),
+            Some(json!({"uuid":uuid,"accept":action=="accept"})),
+        ),
+        "remove" => (
+            reqwest::Method::DELETE,
+            format!("/social/friends/{uuid}"),
+            None,
+        ),
+        _ => return Err("turtle_action_invalid".into()),
     };
-    if result
-        .as_ref()
-        .err()
-        .is_some_and(|e| e == "turtle_http_401")
-    {
-        sessions()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&account_id);
-    }
-    result
+    // Connects on demand and renews the session once after a service restart (401),
+    // so ranks and the list no longer stay empty until the next connect.
+    friends_call(&account_id, method, &path, body).await
 }
 
 /// Ocean shop session. Same sign-in as the native client: Ocean issues a challenge,
@@ -815,6 +839,8 @@ async fn ocean_token(account_id: &str) -> Result<String, String> {
         .await
         .map_err(|_| "turtle_service_unavailable")?;
     if !joined.status().is_success() {
+        // Mojang rejected the reused token: renew it on the next attempt.
+        forget_profile(account_id);
         return Err("turtle_shop_session_denied".into());
     }
     let finish = request(

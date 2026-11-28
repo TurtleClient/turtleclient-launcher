@@ -61,11 +61,12 @@ TasksMax=32
 [Install]
 WantedBy=multi-user.target
 ''')
-    zone.write_text('limit_req_zone $binary_remote_addr zone=turtle_friends:1m rate=5r/s;\nlimit_req_zone $binary_remote_addr zone=turtle_friends_login:1m rate=6r/m;\n')
+    # Sign-ins per IP: room for a quick launcher restart and several players behind one router.
+    zone.write_text('limit_req_zone $binary_remote_addr zone=turtle_friends:1m rate=5r/s;\nlimit_req_zone $binary_remote_addr zone=turtle_friends_login:1m rate=12r/m;\n')
     snippet.write_text('''location = /turtleclient/social/session {
     limit_except POST { deny all; }
     client_max_body_size 1k;
-    limit_req zone=turtle_friends_login burst=3 nodelay;
+    limit_req zone=turtle_friends_login burst=6 nodelay;
     limit_req_status 429;
     proxy_pass http://127.0.0.1:3001/session;
     proxy_connect_timeout 3s;
