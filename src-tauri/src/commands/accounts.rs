@@ -15,7 +15,7 @@ pub async fn discord_presence(
     join_url: Option<String>,
     profile_slug: Option<String>,
 ) -> discord::DiscordStatus {
-    // Kept in the IPC signature for compatibility; TurtleClient has no Discord image assets yet.
+    // Kept for IPC compatibility; the native presence builder supplies Turtle's artwork.
     let _ = (large_image, large_text);
     discord::set_activity(discord::Presence {
         details,
