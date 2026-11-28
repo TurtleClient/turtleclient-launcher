@@ -3,7 +3,8 @@ import { useT } from '../../i18n'
 import { Icon } from '../Icon'
 import { Head } from '../Head'
 import { setScreen } from '../../state/ui'
-import { useTurtleFriends } from '../../state/turtleFriends'
+import { turtleFriendsConnection, useTurtleFriends } from '../../state/turtleFriends'
+import { serviceError } from '../../lib/turtleclient'
 import { dismissInvite, openChat, samePlayer, useTurtleSocial } from '../../state/turtleSocial'
 import { joinFriendWorld } from '../../lib/turtleLaunch'
 import { RANK_COLOR, friendRank, useTurtleRanks } from '../../state/turtleRanks'
@@ -100,7 +101,15 @@ export function TurtleHomeFriends() {
         </div>
       ))}
       <div className="thf-list">
-        {!rows.length ? (
+        {!rows.length && roster.error && !roster.connected && !roster.connecting && !social.ready ? (
+          // A failed sign-in used to leave "connecting…" here forever.
+          <p className="thf-empty" role="alert">
+            {t(serviceError(roster.error))}{' '}
+            <button type="button" className="thf-retry" onClick={() => void turtleFriendsConnection.refresh()}>
+              {t('Повторить')}
+            </button>
+          </p>
+        ) : !rows.length ? (
           <p className="thf-empty">
             {roster.connected || social.ready ? t('Turtle: no friends yet. Send a request using their Minecraft name.') : t('Turtle: connecting…')}
           </p>

@@ -21,6 +21,7 @@
 .thf-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .thf-cap { margin: 6px 2px 2px; font: 800 11px/1 var(--m-font); color: var(--m-fg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .thf-empty { margin: 4px 2px; font: 600 13px/1.35 var(--m-font); color: var(--m-fg-muted); }
+.thf-retry { padding: 0; border: 0; background: none; font: inherit; color: var(--m-accent, #9ae27a); text-decoration: underline; cursor: pointer; }
 .thf-row {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; border: 0; cursor: pointer; text-align: start;
   font: inherit; color: #fff; background: transparent; --px-n: 3px; clip-path: var(--px-4);
