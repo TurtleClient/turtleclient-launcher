@@ -27,6 +27,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // Public application id from the Discord Developer Portal. Discord needs it to show the name and pictures. It is not a secret.
 const DEFAULT_APP_ID: &str = "1568214525138968586";
+const LOGO_IMAGE: &str =
+    "https://turtleclient.de/assets/discord/turtle-client-logo-f2b1f8929437.png";
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 const SITE_URL: &str = "https://github.com/TurtleClient/turtleclient-launcher/releases";
 const DISCORD_URL: &str = "https://discord.gg/3hc8xZGaTG";
@@ -139,7 +141,11 @@ pub fn status() -> DiscordStatus {
         app_id: app_id(),
         last_error: lock(&LAST_ERROR).clone(),
         last_activity: lock(&LAST_OK).clone(),
-        user_id: if VISIBLE.load(Ordering::SeqCst) { lock(&USER_ID).clone() } else { String::new() },
+        user_id: if VISIBLE.load(Ordering::SeqCst) {
+            lock(&USER_ID).clone()
+        } else {
+            String::new()
+        },
     }
 }
 
@@ -161,7 +167,10 @@ fn spawn_worker(generation: u64, rx: Receiver<Job>) {
 /// passes - never later, whatever the socket does.
 async fn submit(work: Work) {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    if !enqueue(Job { work, done: Some(tx) }) {
+    if !enqueue(Job {
+        work,
+        done: Some(tx),
+    }) {
         return;
     }
     let _ = tokio::time::timeout(WAIT, rx).await;
@@ -324,7 +333,10 @@ fn handshake(c: &mut DiscordIpcClient, id: &str) -> Result<String, Box<dyn std::
     // First message to the Discord socket (handshake): protocol version and application id.
     c.send(json!({ "v": 1, "client_id": id }), 0)?;
     let (_, val) = c.recv()?;
-    Ok(val["data"]["user"]["id"].as_str().unwrap_or_default().to_string())
+    Ok(val["data"]["user"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string())
 }
 
 const JOIN_PREFIX: &str = "https://millida.net/join?";
@@ -334,23 +346,7 @@ const JOIN_PREFIX: &str = "https://millida.net/join?";
 /// restricted to our own join page because the value comes from the webview.
 /// `profile_slug` is a slug, not a URL: the address is built here so the webview
 /// cannot point the button anywhere else. Empty slug keeps the Discord button.
-fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Presence) {
-    if !ensure_connected(client) {
-        return;
-    }
-    if p.playing {
-        if since.is_none() {
-            *since = Some(
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0),
-            );
-        }
-    } else {
-        *since = None;
-    }
-
+fn activity_for(p: &Presence, since: Option<i64>) -> activity::Activity<'_> {
     let join_ok = p.playing && p.join_url.starts_with(JOIN_PREFIX) && p.join_url.len() <= 512;
     // Presence is read by people of every language, so it stays English whatever the launcher's UI language.
     let join_label = "Join server";
@@ -370,12 +366,41 @@ fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Pre
         .activity_type(ActivityType::Playing)
         .details(&p.details)
         .state(&p.state)
+        .assets(
+            activity::Assets::new()
+                .large_image(LOGO_IMAGE)
+                .large_text("Turtle Client"),
+        )
         .buttons(buttons);
-    if let Some(ts) = *since {
+    if let Some(ts) = since {
         act = act.timestamps(activity::Timestamps::new().start(ts));
     }
+    act
+}
 
-    if let Err(e) = client.as_mut().map(|c| c.set_activity(act)).unwrap_or(Ok(())) {
+fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Presence) {
+    if !ensure_connected(client) {
+        return;
+    }
+    if p.playing {
+        if since.is_none() {
+            *since = Some(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0),
+            );
+        }
+    } else {
+        *since = None;
+    }
+    let act = activity_for(p, *since);
+
+    if let Err(e) = client
+        .as_mut()
+        .map(|c| c.set_activity(act))
+        .unwrap_or(Ok(()))
+    {
         note_err(format!("активность не поставилась: {}", e));
         drop_client(client);
         return;
@@ -406,11 +431,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cover_is_included_without_changing_launcher_or_playing_details() {
+        for (playing, since, details) in [
+            (false, None, "In launcher"),
+            (true, Some(1000), "Playing TurtleClient"),
+        ] {
+            let p = Presence {
+                details: details.into(),
+                state: "Nick: Fixture".into(),
+                playing,
+                ..Presence::default()
+            };
+            let payload = serde_json::to_value(activity_for(&p, since)).unwrap();
+            assert_eq!(payload["details"], details);
+            assert_eq!(payload["state"], "Nick: Fixture");
+            assert_eq!(
+                payload["assets"]["large_image"],
+                "https://turtleclient.de/assets/discord/turtle-client-logo-f2b1f8929437.png"
+            );
+            assert_eq!(payload["assets"]["large_text"], "Turtle Client");
+            assert_eq!(payload["buttons"].as_array().unwrap().len(), 2);
+            assert_eq!(payload["timestamps"]["start"].as_i64(), since);
+        }
+    }
+
+    #[test]
     fn profile_button_points_only_at_our_profile_page() {
         let cases: [(&str, Option<&str>); 7] = [
-            ("danielgrash", Some("https://millida.net/u/danielgrash")),
-            ("DanielGrash", Some("https://millida.net/u/danielgrash")),
-            ("some_nick-2", Some("https://millida.net/u/some_nick-2")),
+            (
+                "danielgrash",
+                Some("https://github.com/TurtleClient/danielgrash"),
+            ),
+            (
+                "DanielGrash",
+                Some("https://github.com/TurtleClient/danielgrash"),
+            ),
+            (
+                "some_nick-2",
+                Some("https://github.com/TurtleClient/some_nick-2"),
+            ),
             ("", None),
             ("../admin", None),
             ("a b", None),
@@ -433,10 +492,30 @@ mod tests {
     #[test]
     fn a_worker_is_given_up_on_only_after_the_deadline() {
         let cases: [(u64, u64, bool, &str); 4] = [
-            (0, 60_000, false, "idle worker: there is nothing to give up on"),
-            (1_000, 1_500, false, "half a second in: the socket is merely slow"),
-            (1_000, 11_000, true, "past the deadline: the read is not coming back"),
-            (1_000, 1_000 + OP_TIMEOUT.as_millis() as u64, true, "exactly at the deadline"),
+            (
+                0,
+                60_000,
+                false,
+                "idle worker: there is nothing to give up on",
+            ),
+            (
+                1_000,
+                1_500,
+                false,
+                "half a second in: the socket is merely slow",
+            ),
+            (
+                1_000,
+                11_000,
+                true,
+                "past the deadline: the read is not coming back",
+            ),
+            (
+                1_000,
+                1_000 + OP_TIMEOUT.as_millis() as u64,
+                true,
+                "exactly at the deadline",
+            ),
         ];
         for (busy_since, now, want, why) in cases {
             assert_eq!(
@@ -470,8 +549,14 @@ mod tests {
     #[test]
     fn abandoned_workers_are_bounded() {
         const {
-            assert!(MAX_RESPAWNS >= 1, "одна пересборка соединения обязана быть: сокет мог просто умереть");
-            assert!(MAX_RESPAWNS <= 5, "каждый брошенный поток живёт до конца процесса — их не может быть много");
+            assert!(
+                MAX_RESPAWNS >= 1,
+                "одна пересборка соединения обязана быть: сокет мог просто умереть"
+            );
+            assert!(
+                MAX_RESPAWNS <= 5,
+                "каждый брошенный поток живёт до конца процесса — их не может быть много"
+            );
         }
     }
 }
